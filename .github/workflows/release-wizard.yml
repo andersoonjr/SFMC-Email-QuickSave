@@ -1,4 +1,4 @@
-name: Release com IA e Feitiços de Harry Potter
+name: AI-Powered Wizard Release
 
 on:
   push:
@@ -11,12 +11,12 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout do código
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Obter tag anterior e diff
+      - name: Get previous tag and changes
         id: info
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -39,22 +39,22 @@ jobs:
           echo "$COMMITS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: IA – decidir bump de versão
+      - name: AI – determine version bump
         id: ai_bump
         env:
           SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
         run: |
-          PROMPT="Você é um especialista em versionamento semântico.
-          Analise as mudanças de código abaixo e classifique a release como:
-          - 'major' se houver mudanças que quebram compatibilidade com versões anteriores,
-          - 'minor' se houver novas funcionalidades mantendo compatibilidade,
-          - 'patch' se forem apenas correções de bugs, refatorações ou ajustes pequenos.
-          Responda APENAS com uma palavra: major, minor ou patch.
+          PROMPT="You are an expert in semantic versioning.
+          Analyze the code changes below and classify the release as:
+          - 'major' if there are breaking changes,
+          - 'minor' if new features are added while maintaining backward compatibility,
+          - 'patch' if only bug fixes, refactors, or small adjustments.
+          Reply with ONLY one word: major, minor or patch.
 
-          Resumo das alterações (arquivos modificados):
+          Diff summary (changed files):
           ${{ steps.info.outputs.diff_summary }}
 
-          Mensagens de commit:
+          Commit messages:
           ${{ steps.info.outputs.commits }}"
 
           JSON_PAYLOAD=$(jq -n \
@@ -79,7 +79,7 @@ jobs:
           fi
           echo "type=$BUMP" >> $GITHUB_OUTPUT
 
-      - name: Calcular nova versão
+      - name: Calculate new version
         id: version
         run: |
           PREV_TAG="${{ steps.info.outputs.prev_tag }}"
@@ -87,7 +87,6 @@ jobs:
             PREV_TAG="v0.0.0"
           fi
 
-          # Remove o 'v' e separa major.minor.patch
           IFS='.' read -r major minor patch <<< "${PREV_TAG#v}"
           BUMP="${{ steps.ai_bump.outputs.type }}"
 
@@ -101,26 +100,27 @@ jobs:
           NEW_TAG="v$major.$minor.$patch"
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
-      - name: IA – gerar release notes
+      - name: AI – generate release notes
         id: ai_notes
         env:
           SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
         run: |
           PROMPT=$(cat <<'EOF'
-          Você é um redator técnico especializado em notas de release para extensões de software.
-          Com base nas alterações abaixo, escreva uma nota de release no seguinte formato:
+          You are a technical writer specialized in release notes for software extensions.
+          Based on the changes below, write release notes in the following format:
 
           What's New:
-          **Título curto:** Descrição detalhada da mudança do ponto de vista do usuário.
-          **Outro título:** Descrição...
+          **Short title:** Detailed description of the change from the user's perspective.
+          **Another title:** Description...
 
-          Regras:
-          - NÃO mencione nomes de arquivos, variáveis ou código.
-          - Foco em features, refatorações, UI, performance, correções.
-          - Use inglês profissional e claro.
-          - Seja específico sobre o que mudou, sem expor detalhes internos.
+          Rules:
+          - Do NOT mention file names, variable names, or code.
+          - Focus on features, refactors, UI, performance, bug fixes.
+          - Use professional, clear English.
+          - Be specific about what changed, without exposing internal details.
+          - Start directly with "What's New:" – do not add any introductory sentences.
 
-          Alterações:
+          Changes:
           ${{ steps.info.outputs.diff_summary }}
           ${{ steps.info.outputs.commits }}
           EOF
@@ -143,20 +143,25 @@ jobs:
 
           NOTES=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // ""')
 
-          # Fallback: se a IA falhar, usa o gerador automático do GitHub
           if [ -z "$NOTES" ] || [ "$NOTES" = "null" ]; then
-            echo "IA indisponível – usando fallback do GitHub"
+            echo "AI unavailable – falling back to GitHub auto-generated notes"
             NOTES=$(gh api -X POST /repos/$GITHUB_REPOSITORY/releases/generate-notes \
               -f tag_name="${{ steps.version.outputs.tag }}" \
               -f target_commitish="$GITHUB_SHA" \
-              --jq '.body' 2>/dev/null || echo "Release automática.")
+              --jq '.body' 2>/dev/null || echo "Automatic release.")
+          fi
+
+          CLEAN_NOTES=$(echo "$NOTES" | awk '/What'\''s New:/{flag=1} flag')
+
+          if [ -z "$CLEAN_NOTES" ]; then
+            CLEAN_NOTES="$NOTES"
           fi
 
           echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "$CLEAN_NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Gerar nome da release (Harry Potter, sem repetir)
+      - name: Generate Harry Potter release name (no repeats)
         id: spell
         env:
           GH_TOKEN: ${{ github.token }}
@@ -267,24 +272,37 @@ jobs:
             "Waddiwasi"
             "Wingardium Leviosa"
           )
-          echo "Obtendo número de releases existentes..."
+
+          echo "Fetching number of existing releases..."
           RELEASES_COUNT=$(gh api /repos/$GITHUB_REPOSITORY/releases --paginate --jq 'length' | awk '{s+=$1} END {print s}')
-          echo "Total de releases até agora: $RELEASES_COUNT"
+          echo "Total releases so far: $RELEASES_COUNT"
 
           INDEX=$RELEASES_COUNT
           TOTAL_SPELLS=${#SPELLS[@]}
 
           if [ $INDEX -ge $TOTAL_SPELLS ]; then
-            echo "ERRO: Todos os 100 feitiços já foram usados! Adicione novos à lista ou reinicie o índice."
+            echo "ERROR: All 100 spells have been used! Add more to the list or reset the index."
             exit 1
           fi
 
           SPELL="${SPELLS[$INDEX]}"
           RELEASE_NAME="${SPELL} Update"
-          echo "Nome da release: $RELEASE_NAME"
+          echo "Release name: $RELEASE_NAME"
           echo "name=$RELEASE_NAME" >> $GITHUB_OUTPUT
 
-      - name: Criar Release
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists. Skipping release creation."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Create Release
+        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}

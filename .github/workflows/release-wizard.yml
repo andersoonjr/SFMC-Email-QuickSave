@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  models: read
 
 jobs:
   release:
@@ -48,7 +49,7 @@ jobs:
       - name: AI version bump decision
         id: ai_bump
         env:
-          SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PROMPT="You are an expert in semantic versioning.
           Analyze the code changes below and classify the release as:
@@ -63,7 +64,7 @@ jobs:
           Commit messages:
           ${{ steps.info.outputs.commits }}"
           JSON_PAYLOAD=$(jq -n \
-            --arg model "deepseek-ai/DeepSeek-V3" \
+            --arg model "gpt-4o-mini" \
             --arg prompt "$PROMPT" \
             '{
                model: $model,
@@ -71,8 +72,8 @@ jobs:
                temperature: 0.1,
                max_tokens: 10
              }')
-          RESPONSE=$(curl -s -X POST https://api.siliconflow.cn/v1/chat/completions \
-            -H "Authorization: Bearer $SILICONFLOW_KEY" \
+          RESPONSE=$(curl -s -X POST https://models.github.ai/inference/chat/completions \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$JSON_PAYLOAD")
           BUMP=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' | tr '[:upper:]' '[:lower:]' | grep -oE 'major|minor|patch' | head -1)
@@ -84,7 +85,7 @@ jobs:
       - name: AI generate release notes
         id: ai_notes
         env:
-          SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PROMPT="You are a technical writer specialized in release notes for software extensions.
           Based on the changes below, write a release note in the following format:
@@ -103,7 +104,7 @@ jobs:
           ${{ steps.info.outputs.diff_summary }}
           ${{ steps.info.outputs.commits }}"
           JSON_PAYLOAD=$(jq -n \
-            --arg model "deepseek-ai/DeepSeek-V3" \
+            --arg model "gpt-4o-mini" \
             --arg prompt "$PROMPT" \
             '{
                model: $model,
@@ -111,8 +112,8 @@ jobs:
                temperature: 0.6,
                max_tokens: 1200
              }')
-          RESPONSE=$(curl -s -X POST https://api.siliconflow.cn/v1/chat/completions \
-            -H "Authorization: Bearer $SILICONFLOW_KEY" \
+          RESPONSE=$(curl -s -X POST https://models.github.ai/inference/chat/completions \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$JSON_PAYLOAD")
           NOTES=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // ""')

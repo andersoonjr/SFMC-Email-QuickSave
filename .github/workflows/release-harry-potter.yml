@@ -1,0 +1,296 @@
+name: Release com IA e Feitiços de Harry Potter
+
+on:
+  push:
+    branches: [ master, main ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Obter tag anterior e diff
+        id: info
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+          if [ -z "$PREV_TAG" ]; then
+            FIRST_COMMIT=$(git log --pretty=format:%H | tail -1)
+            RANGE="$FIRST_COMMIT..HEAD"
+          else
+            RANGE="$PREV_TAG..HEAD"
+          fi
+
+          DIFF_SUMMARY=$(git diff $RANGE --compact-summary)
+          COMMITS=$(git log $RANGE --pretty=format:"- %s" --no-merges)
+
+          echo "diff_summary<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF_SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: IA – decidir bump de versão
+        id: ai_bump
+        env:
+          SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
+        run: |
+          PROMPT="Você é um especialista em versionamento semântico.
+          Analise as mudanças de código abaixo e classifique a release como:
+          - 'major' se houver mudanças que quebram compatibilidade com versões anteriores,
+          - 'minor' se houver novas funcionalidades mantendo compatibilidade,
+          - 'patch' se forem apenas correções de bugs, refatorações ou ajustes pequenos.
+          Responda APENAS com uma palavra: major, minor ou patch.
+
+          Resumo das alterações (arquivos modificados):
+          ${{ steps.info.outputs.diff_summary }}
+
+          Mensagens de commit:
+          ${{ steps.info.outputs.commits }}"
+
+          JSON_PAYLOAD=$(jq -n \
+            --arg model "deepseek-ai/DeepSeek-V3" \
+            --arg prompt "$PROMPT" \
+            '{
+               model: $model,
+               messages: [{role: "user", content: $prompt}],
+               temperature: 0.1,
+               max_tokens: 10
+             }')
+
+          RESPONSE=$(curl -s -X POST https://api.siliconflow.cn/v1/chat/completions \
+            -H "Authorization: Bearer $SILICONFLOW_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD")
+
+          BUMP=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' | tr '[:upper:]' '[:lower:]' | grep -oE 'major|minor|patch' | head -1)
+
+          if [ -z "$BUMP" ]; then
+            BUMP="patch"
+          fi
+          echo "type=$BUMP" >> $GITHUB_OUTPUT
+
+      - name: Calcular nova versão
+        id: version
+        run: |
+          PREV_TAG="${{ steps.info.outputs.prev_tag }}"
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG="v0.0.0"
+          fi
+
+          # Remove o 'v' e separa major.minor.patch
+          IFS='.' read -r major minor patch <<< "${PREV_TAG#v}"
+          BUMP="${{ steps.ai_bump.outputs.type }}"
+
+          case $BUMP in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+            *)     patch=$((patch + 1)) ;;
+          esac
+
+          NEW_TAG="v$major.$minor.$patch"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      - name: IA – gerar release notes
+        id: ai_notes
+        env:
+          SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
+        run: |
+          PROMPT=$(cat <<'EOF'
+          Você é um redator técnico especializado em notas de release para extensões de software.
+          Com base nas alterações abaixo, escreva uma nota de release no seguinte formato:
+
+          What's New:
+          **Título curto:** Descrição detalhada da mudança do ponto de vista do usuário.
+          **Outro título:** Descrição...
+
+          Regras:
+          - NÃO mencione nomes de arquivos, variáveis ou código.
+          - Foco em features, refatorações, UI, performance, correções.
+          - Use inglês profissional e claro.
+          - Seja específico sobre o que mudou, sem expor detalhes internos.
+
+          Alterações:
+          ${{ steps.info.outputs.diff_summary }}
+          ${{ steps.info.outputs.commits }}
+          EOF
+          )
+
+          JSON_PAYLOAD=$(jq -n \
+            --arg model "deepseek-ai/DeepSeek-V3" \
+            --arg prompt "$PROMPT" \
+            '{
+               model: $model,
+               messages: [{role: "user", content: $prompt}],
+               temperature: 0.6,
+               max_tokens: 1200
+             }')
+
+          RESPONSE=$(curl -s -X POST https://api.siliconflow.cn/v1/chat/completions \
+            -H "Authorization: Bearer $SILICONFLOW_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD")
+
+          NOTES=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // ""')
+
+          # Fallback: se a IA falhar, usa o gerador automático do GitHub
+          if [ -z "$NOTES" ] || [ "$NOTES" = "null" ]; then
+            echo "IA indisponível – usando fallback do GitHub"
+            NOTES=$(gh api -X POST /repos/$GITHUB_REPOSITORY/releases/generate-notes \
+              -f tag_name="${{ steps.version.outputs.tag }}" \
+              -f target_commitish="$GITHUB_SHA" \
+              --jq '.body' 2>/dev/null || echo "Release automática.")
+          fi
+
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Gerar nome da release (Harry Potter, sem repetir)
+        id: spell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SPELLS=(
+            "Accio"
+            "Aguamenti"
+            "Alohomora"
+            "Anapneo"
+            "Aparecium"
+            "Apparate"
+            "Aqua Eructo"
+            "Arania Exumai"
+            "Arresto Momentum"
+            "Avada Kedavra"
+            "Avis"
+            "Bombarda"
+            "Brackium Emendo"
+            "Calvorio"
+            "Cantis"
+            "Cave Inimicum"
+            "Colloportus"
+            "Confringo"
+            "Confundo"
+            "Crucio"
+            "Cushioning"
+            "Deletrius"
+            "Densaugeo"
+            "Deprimo"
+            "Depulso"
+            "Descendo"
+            "Diffindo"
+            "Dissendium"
+            "Duro"
+            "Engorgio"
+            "Ennervate"
+            "Entrail-Expelling"
+            "Episkey"
+            "Erecto"
+            "Evanesco"
+            "Expecto Patronum"
+            "Expelliarmus"
+            "Ferula"
+            "Fidelius"
+            "Fiendfyre"
+            "Finestra"
+            "Finite Incantatem"
+            "Flagrante"
+            "Flagrate"
+            "Flame-Freezing"
+            "Flipendo"
+            "Furnunculus"
+            "Geminio"
+            "Glacius"
+            "Homenum Revelio"
+            "Homorphus"
+            "Horcrux"
+            "Immobulus"
+            "Imperio"
+            "Impervius"
+            "Incarcerous"
+            "Incendio"
+            "Legilimens"
+            "Levicorpus"
+            "Liberacorpus"
+            "Locomotor Mortis"
+            "Lumos"
+            "Lumos Solem"
+            "Meteolojinx"
+            "Mimblewimble"
+            "Morsmordre"
+            "Muffliato"
+            "Nox"
+            "Obliviate"
+            "Obscuro"
+            "Oppugno"
+            "Orchideous"
+            "Pack"
+            "Petrificus Totalus"
+            "Piertotum Locomotor"
+            "Plumifume"
+            "Portus"
+            "Priori Incantatem"
+            "Protego"
+            "Protego Horribilis"
+            "Protego Maxima"
+            "Quietus"
+            "Reducio"
+            "Reducto"
+            "Relashio"
+            "Rennervate"
+            "Reparo"
+            "Repello"
+            "Repello Muggletum"
+            "Revelio"
+            "Rictusempra"
+            "Riddikulus"
+            "Salvio Hexia"
+            "Scourgify"
+            "Sectumsempra"
+            "Serpensortia"
+            "Silencio"
+            "Sonorus"
+            "Stupefy"
+            "Tarantallegra"
+            "Tergeo"
+            "Unbreakable Vow"
+            "Waddiwasi"
+            "Wingardium Leviosa"
+          )
+          echo "Obtendo número de releases existentes..."
+          RELEASES_COUNT=$(gh api /repos/$GITHUB_REPOSITORY/releases --paginate --jq 'length' | awk '{s+=$1} END {print s}')
+          echo "Total de releases até agora: $RELEASES_COUNT"
+
+          INDEX=$RELEASES_COUNT
+          TOTAL_SPELLS=${#SPELLS[@]}
+
+          if [ $INDEX -ge $TOTAL_SPELLS ]; then
+            echo "ERRO: Todos os 100 feitiços já foram usados! Adicione novos à lista ou reinicie o índice."
+            exit 1
+          fi
+
+          SPELL="${SPELLS[$INDEX]}"
+          RELEASE_NAME="${SPELL} Update"
+          echo "Nome da release: $RELEASE_NAME"
+          echo "name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Criar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.spell.outputs.name }}
+          body: ${{ steps.ai_notes.outputs.body }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -51,17 +51,17 @@ jobs:
           SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
         run: |
           PROMPT="You are an expert in semantic versioning.
-Analyze the code changes below and classify the release as:
-- 'major' if there are breaking changes,
-- 'minor' if there are new features while maintaining compatibility,
-- 'patch' if there are only bug fixes, refactorings, or minor adjustments.
-Answer ONLY with one word: major, minor or patch.
+          Analyze the code changes below and classify the release as:
+          - 'major' if there are breaking changes,
+          - 'minor' if there are new features while maintaining compatibility,
+          - 'patch' if there are only bug fixes, refactorings, or minor adjustments.
+          Answer ONLY with one word: major, minor or patch.
 
-Diff summary:
-${{ steps.info.outputs.diff_summary }}
+          Diff summary:
+          ${{ steps.info.outputs.diff_summary }}
 
-Commit messages:
-${{ steps.info.outputs.commits }}"
+          Commit messages:
+          ${{ steps.info.outputs.commits }}"
           JSON_PAYLOAD=$(jq -n \
             --arg model "deepseek-ai/DeepSeek-V3" \
             --arg prompt "$PROMPT" \
@@ -87,21 +87,21 @@ ${{ steps.info.outputs.commits }}"
           SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
         run: |
           PROMPT="You are a technical writer specialized in release notes for software extensions.
-Based on the changes below, write a release note in the following format:
+          Based on the changes below, write a release note in the following format:
 
-What's New:
-**Short title:** Detailed description of the change from the user's perspective.
-**Another title:** Description...
+          What's New:
+          **Short title:** Detailed description of the change from the user's perspective.
+          **Another title:** Description...
 
-Rules:
-- Do NOT mention file names, variable names, or code.
-- Focus on features, refactorings, UI, performance, bug fixes.
-- Use professional and clear English.
-- Be specific about what changed, without exposing internal details.
+          Rules:
+          - Do NOT mention file names, variable names, or code.
+          - Focus on features, refactorings, UI, performance, bug fixes.
+          - Use professional and clear English.
+          - Be specific about what changed, without exposing internal details.
 
-Changes:
-${{ steps.info.outputs.diff_summary }}
-${{ steps.info.outputs.commits }}"
+          Changes:
+          ${{ steps.info.outputs.diff_summary }}
+          ${{ steps.info.outputs.commits }}"
           JSON_PAYLOAD=$(jq -n \
             --arg model "deepseek-ai/DeepSeek-V3" \
             --arg prompt "$PROMPT" \

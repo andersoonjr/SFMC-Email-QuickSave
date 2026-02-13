@@ -28,12 +28,16 @@ jobs:
           fi
           DIFF_SUMMARY=$(git diff $RANGE --compact-summary)
           COMMITS=$(git log $RANGE --pretty=format:"- %s" --no-merges)
-          echo "diff_summary<<EOF" >> $GITHUB_OUTPUT
-          echo "$DIFF_SUMMARY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "diff_summary<<EOF"
+            echo "$DIFF_SUMMARY"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+          {
+            echo "commits<<EOF"
+            echo "$COMMITS"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Extract version from manifest.json
         id: manifest_version
@@ -46,8 +50,7 @@ jobs:
         env:
           SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
         run: |
-          PROMPT=$(cat <<'EOF'
-You are an expert in semantic versioning.
+          PROMPT="You are an expert in semantic versioning.
 Analyze the code changes below and classify the release as:
 - 'major' if there are breaking changes,
 - 'minor' if there are new features while maintaining compatibility,
@@ -58,9 +61,7 @@ Diff summary:
 ${{ steps.info.outputs.diff_summary }}
 
 Commit messages:
-${{ steps.info.outputs.commits }}
-EOF
-)
+${{ steps.info.outputs.commits }}"
           JSON_PAYLOAD=$(jq -n \
             --arg model "deepseek-ai/DeepSeek-V3" \
             --arg prompt "$PROMPT" \
@@ -85,8 +86,7 @@ EOF
         env:
           SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
         run: |
-          PROMPT=$(cat <<'EOF'
-You are a technical writer specialized in release notes for software extensions.
+          PROMPT="You are a technical writer specialized in release notes for software extensions.
 Based on the changes below, write a release note in the following format:
 
 What's New:
@@ -101,9 +101,7 @@ Rules:
 
 Changes:
 ${{ steps.info.outputs.diff_summary }}
-${{ steps.info.outputs.commits }}
-EOF
-)
+${{ steps.info.outputs.commits }}"
           JSON_PAYLOAD=$(jq -n \
             --arg model "deepseek-ai/DeepSeek-V3" \
             --arg prompt "$PROMPT" \
@@ -125,9 +123,11 @@ EOF
               -f target_commitish="$GITHUB_SHA" \
               --jq '.body' 2>/dev/null || echo "Automatic release.")
           fi
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$NOTES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "body<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Generate release name (Wizard spells, no repeats)
         id: spell

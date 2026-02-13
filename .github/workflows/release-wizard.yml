@@ -1,4 +1,4 @@
-name: AI-Powered Wizard Release
+name: Release with AI and Wizard Spells
 
 on:
   push:
@@ -11,27 +11,23 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get previous tag and changes
+      - name: Get previous tag and diff
         id: info
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
-
           if [ -z "$PREV_TAG" ]; then
             FIRST_COMMIT=$(git log --pretty=format:%H | tail -1)
             RANGE="$FIRST_COMMIT..HEAD"
           else
             RANGE="$PREV_TAG..HEAD"
           fi
-
           DIFF_SUMMARY=$(git diff $RANGE --compact-summary)
           COMMITS=$(git log $RANGE --pretty=format:"- %s" --no-merges)
-
           echo "diff_summary<<EOF" >> $GITHUB_OUTPUT
           echo "$DIFF_SUMMARY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -39,24 +35,32 @@ jobs:
           echo "$COMMITS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: AI – determine version bump
+      - name: Extract version from manifest.json
+        id: manifest_version
+        run: |
+          VERSION=$(jq -r '.version' manifest.json)
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: AI version bump decision
         id: ai_bump
         env:
           SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
         run: |
-          PROMPT="You are an expert in semantic versioning.
-          Analyze the code changes below and classify the release as:
-          - 'major' if there are breaking changes,
-          - 'minor' if new features are added while maintaining backward compatibility,
-          - 'patch' if only bug fixes, refactors, or small adjustments.
-          Reply with ONLY one word: major, minor or patch.
+          PROMPT=$(cat <<'EOF'
+You are an expert in semantic versioning.
+Analyze the code changes below and classify the release as:
+- 'major' if there are breaking changes,
+- 'minor' if there are new features while maintaining compatibility,
+- 'patch' if there are only bug fixes, refactorings, or minor adjustments.
+Answer ONLY with one word: major, minor or patch.
 
-          Diff summary (changed files):
-          ${{ steps.info.outputs.diff_summary }}
+Diff summary:
+${{ steps.info.outputs.diff_summary }}
 
-          Commit messages:
-          ${{ steps.info.outputs.commits }}"
-
+Commit messages:
+${{ steps.info.outputs.commits }}
+EOF
+)
           JSON_PAYLOAD=$(jq -n \
             --arg model "deepseek-ai/DeepSeek-V3" \
             --arg prompt "$PROMPT" \
@@ -66,66 +70,40 @@ jobs:
                temperature: 0.1,
                max_tokens: 10
              }')
-
           RESPONSE=$(curl -s -X POST https://api.siliconflow.cn/v1/chat/completions \
             -H "Authorization: Bearer $SILICONFLOW_KEY" \
             -H "Content-Type: application/json" \
             -d "$JSON_PAYLOAD")
-
           BUMP=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' | tr '[:upper:]' '[:lower:]' | grep -oE 'major|minor|patch' | head -1)
-
           if [ -z "$BUMP" ]; then
             BUMP="patch"
           fi
           echo "type=$BUMP" >> $GITHUB_OUTPUT
 
-      - name: Calculate new version
-        id: version
-        run: |
-          PREV_TAG="${{ steps.info.outputs.prev_tag }}"
-          if [ -z "$PREV_TAG" ]; then
-            PREV_TAG="v0.0.0"
-          fi
-
-          IFS='.' read -r major minor patch <<< "${PREV_TAG#v}"
-          BUMP="${{ steps.ai_bump.outputs.type }}"
-
-          case $BUMP in
-            major) major=$((major + 1)); minor=0; patch=0 ;;
-            minor) minor=$((minor + 1)); patch=0 ;;
-            patch) patch=$((patch + 1)) ;;
-            *)     patch=$((patch + 1)) ;;
-          esac
-
-          NEW_TAG="v$major.$minor.$patch"
-          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-
-      - name: AI – generate release notes
+      - name: AI generate release notes
         id: ai_notes
         env:
           SILICONFLOW_KEY: ${{ secrets.SILICONFLOW_KEY }}
         run: |
           PROMPT=$(cat <<'EOF'
-          You are a technical writer specialized in release notes for software extensions.
-          Based on the changes below, write release notes in the following format:
+You are a technical writer specialized in release notes for software extensions.
+Based on the changes below, write a release note in the following format:
 
-          What's New:
-          **Short title:** Detailed description of the change from the user's perspective.
-          **Another title:** Description...
+What's New:
+**Short title:** Detailed description of the change from the user's perspective.
+**Another title:** Description...
 
-          Rules:
-          - Do NOT mention file names, variable names, or code.
-          - Focus on features, refactors, UI, performance, bug fixes.
-          - Use professional, clear English.
-          - Be specific about what changed, without exposing internal details.
-          - Start directly with "What's New:" – do not add any introductory sentences.
+Rules:
+- Do NOT mention file names, variable names, or code.
+- Focus on features, refactorings, UI, performance, bug fixes.
+- Use professional and clear English.
+- Be specific about what changed, without exposing internal details.
 
-          Changes:
-          ${{ steps.info.outputs.diff_summary }}
-          ${{ steps.info.outputs.commits }}
-          EOF
-          )
-
+Changes:
+${{ steps.info.outputs.diff_summary }}
+${{ steps.info.outputs.commits }}
+EOF
+)
           JSON_PAYLOAD=$(jq -n \
             --arg model "deepseek-ai/DeepSeek-V3" \
             --arg prompt "$PROMPT" \
@@ -135,33 +113,23 @@ jobs:
                temperature: 0.6,
                max_tokens: 1200
              }')
-
           RESPONSE=$(curl -s -X POST https://api.siliconflow.cn/v1/chat/completions \
             -H "Authorization: Bearer $SILICONFLOW_KEY" \
             -H "Content-Type: application/json" \
             -d "$JSON_PAYLOAD")
-
           NOTES=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // ""')
-
           if [ -z "$NOTES" ] || [ "$NOTES" = "null" ]; then
-            echo "AI unavailable – falling back to GitHub auto-generated notes"
+            echo "AI unavailable – falling back to GitHub automatic notes"
             NOTES=$(gh api -X POST /repos/$GITHUB_REPOSITORY/releases/generate-notes \
-              -f tag_name="${{ steps.version.outputs.tag }}" \
+              -f tag_name="${{ steps.manifest_version.outputs.version }}" \
               -f target_commitish="$GITHUB_SHA" \
               --jq '.body' 2>/dev/null || echo "Automatic release.")
           fi
-
-          CLEAN_NOTES=$(echo "$NOTES" | awk '/What'\''s New:/{flag=1} flag')
-
-          if [ -z "$CLEAN_NOTES" ]; then
-            CLEAN_NOTES="$NOTES"
-          fi
-
           echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$CLEAN_NOTES" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Generate Harry Potter release name (no repeats)
+      - name: Generate release name (Wizard spells, no repeats)
         id: spell
         env:
           GH_TOKEN: ${{ github.token }}
@@ -272,40 +240,24 @@ jobs:
             "Waddiwasi"
             "Wingardium Leviosa"
           )
-
-          echo "Fetching number of existing releases..."
+          echo "Fetching existing releases count..."
           RELEASES_COUNT=$(gh api /repos/$GITHUB_REPOSITORY/releases --paginate --jq 'length' | awk '{s+=$1} END {print s}')
           echo "Total releases so far: $RELEASES_COUNT"
-
           INDEX=$RELEASES_COUNT
           TOTAL_SPELLS=${#SPELLS[@]}
-
           if [ $INDEX -ge $TOTAL_SPELLS ]; then
-            echo "ERROR: All 100 spells have been used! Add more to the list or reset the index."
+            echo "ERROR: All 100 spells have been used! Add new ones to the list or reset the index."
             exit 1
           fi
-
           SPELL="${SPELLS[$INDEX]}"
           RELEASE_NAME="${SPELL} Update"
           echo "Release name: $RELEASE_NAME"
           echo "name=$RELEASE_NAME" >> $GITHUB_OUTPUT
 
-      - name: Check if tag already exists
-        id: check_tag
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists. Skipping release creation."
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-          
       - name: Create Release
-        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
+          tag_name: ${{ steps.manifest_version.outputs.version }}
           name: ${{ steps.spell.outputs.name }}
           body: ${{ steps.ai_notes.outputs.body }}
           draft: false

@@ -959,17 +959,27 @@ async function exportSelectedAsPackage() {
 }
 
 /**
- * Baixa um asset exportado como pasta separada em Downloads/<nome>/, com o HTML
- * (já reescrito com variáveis AMPscript) na raiz e as imagens numeradas em IMG/.
+ * Baixa um asset exportado como pasta separada em Downloads/<nome>/, contendo:
+ * - <nome>.html: o HTML original, sem alterações
+ * - <nome>_processado.html: o HTML reescrito com variáveis AMPscript
+ * - IMG/: as imagens numeradas na ordem em que aparecem
  */
 async function downloadAssetPackage(assetData) {
   const folderName = sanitizeFileName(assetData.name);
 
-  const htmlBlob = new Blob([assetData.html], { type: 'text/html' });
-  const htmlUrl = URL.createObjectURL(htmlBlob);
+  const originalBlob = new Blob([assetData.originalHtml], { type: 'text/html' });
+  const originalUrl = URL.createObjectURL(originalBlob);
   await chrome.downloads.download({
-    url: htmlUrl,
+    url: originalUrl,
     filename: `${folderName}/${folderName}.html`,
+    conflictAction: 'uniquify'
+  });
+
+  const processedBlob = new Blob([assetData.processedHtml], { type: 'text/html' });
+  const processedUrl = URL.createObjectURL(processedBlob);
+  await chrome.downloads.download({
+    url: processedUrl,
+    filename: `${folderName}/${folderName}_processado.html`,
     conflictAction: 'uniquify'
   });
 

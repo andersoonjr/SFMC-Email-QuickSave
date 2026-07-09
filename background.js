@@ -525,7 +525,8 @@ async function processAssetForExport(stack, assetId, options = {}) {
 
   return {
     name: asset.name,
-    html: setBlock + finalHtml,
+    originalHtml: html,
+    processedHtml: setBlock + finalHtml,
     images
   };
 }

@@ -13,6 +13,8 @@ const translations = {
     foldersTitle: "Pastas & Conteúdo",
     loading: "Carregando...",
     downloadSelected: "Baixar Selecionados",
+    exportPackage: "Exportar Pacote (IMG + Variáveis)",
+    exportingPackage: "Exportando pacote...",
     sessionErrorTitle: "Sem Sessão",
     sessionErrorDesc: "Faça login no Marketing Cloud para continuar.",
     tryAgain: "Tentar Novamente",
@@ -61,6 +63,8 @@ const translations = {
     filterTemplate: "Template",
     filterBlock: "Block",
     downloadSelected: "Download Selected",
+    exportPackage: "Export Package (IMG + Variables)",
+    exportingPackage: "Exporting package...",
     sessionErrorTitle: "No Session",
     sessionErrorDesc: "Please login to Marketing Cloud to continue.",
     tryAgain: "Try Again",
@@ -109,6 +113,7 @@ const elements = {
   appLayout: null,
   btnDownload: null,
   btnText: null,
+  btnExportPackage: null,
   selectAll: null,
   selectionCount: null,
   overlayLoading: null,
@@ -135,6 +140,7 @@ function initElements() {
   elements.appLayout = document.querySelector('.app-layout');
   elements.btnDownload = document.getElementById('btn-download');
   elements.btnText = document.getElementById('btn-text');
+  elements.btnExportPackage = document.getElementById('btn-export-package');
   elements.selectAll = document.getElementById('select-all');
   elements.selectionCount = document.getElementById('selection-count');
   elements.overlayLoading = document.getElementById('overlay-loading');
@@ -186,6 +192,7 @@ function initEventListeners() {
   elements.searchInput.addEventListener('input', handleSearchInput);
   elements.clearSearch.addEventListener('click', clearSearch);
   elements.btnDownload.addEventListener('click', downloadSelected);
+  elements.btnExportPackage.addEventListener('click', exportSelectedAsPackage);
   elements.selectAll.addEventListener('change', toggleSelectAll);
 
   elements.searchType.addEventListener('change', () => {
@@ -740,6 +747,7 @@ function updateSelectionCount() {
   const baseText = getMsg('downloadSelected');
   elements.btnText.textContent = count > 0 ? `${baseText} (${count})` : baseText;
   elements.btnDownload.disabled = count === 0;
+  elements.btnExportPackage.disabled = count === 0;
   elements.selectAll.checked = count > 0;
 }
 
@@ -886,6 +894,82 @@ async function downloadSelected() {
     showMessage(`${getMsg('error')}: ${error.message}`);
   } finally {
     hideLoading();
+  }
+}
+
+async function exportSelectedAsPackage() {
+  if (state.selectedAssets.size === 0) return;
+
+  const assetIds = Array.from(state.selectedAssets);
+  const total = assetIds.length;
+  const resolveBlocks = elements.options.resolveBlocks?.checked ?? true;
+
+  showLoading(getMsg('exportingPackage'));
+  updateProgress(0, total);
+
+  let exportedCount = 0;
+  let totalImages = 0;
+
+  try {
+    for (let i = 0; i < total; i++) {
+      let statusText = `${getMsg('processing')} ${i + 1}/${total}`;
+      if (resolveBlocks) statusText += ` - ${getMsg('resolvingBlocks')}`;
+      updateProgress(i, total, statusText);
+
+      const response = await sendMessage({
+        action: 'getAssetForExport',
+        stack: state.stack,
+        assetId: assetIds[i],
+        resolveBlocks
+      });
+
+      if (response.success && response.data) {
+        await downloadAssetPackage(response.data);
+        exportedCount++;
+        totalImages += response.data.images.length;
+      }
+    }
+
+    if (exportedCount > 0) {
+      let successMsg = getMsg('success');
+      if (totalImages > 0) {
+        successMsg += ` (${totalImages} ${getMsg('imagesIncluded')})`;
+      }
+      showMessage(successMsg);
+    } else {
+      showMessage(getMsg('noContent'));
+    }
+  } catch (error) {
+    showMessage(`${getMsg('error')}: ${error.message}`);
+  } finally {
+    hideLoading();
+  }
+}
+
+/**
+ * Baixa um asset exportado como pasta separada em Downloads/<nome>/, com o HTML
+ * (já reescrito com variáveis AMPscript) na raiz e as imagens numeradas em IMG/.
+ */
+async function downloadAssetPackage(assetData) {
+  const folderName = sanitizeFileName(assetData.name);
+
+  const htmlBlob = new Blob([assetData.html], { type: 'text/html' });
+  const htmlUrl = URL.createObjectURL(htmlBlob);
+  await chrome.downloads.download({
+    url: htmlUrl,
+    filename: `${folderName}/${folderName}.html`,
+    conflictAction: 'uniquify'
+  });
+
+  for (const img of assetData.images) {
+    if (!img.data || !img.filename) continue;
+    const imgBlob = new Blob([img.data], { type: img.contentType || 'application/octet-stream' });
+    const imgUrl = URL.createObjectURL(imgBlob);
+    await chrome.downloads.download({
+      url: imgUrl,
+      filename: `${folderName}/IMG/${img.filename}`,
+      conflictAction: 'uniquify'
+    });
   }
 }
 

@@ -20,6 +20,7 @@ The tool offers a clean and modern interface for instantly exporting your assets
 * **Smart Filtering**: Easily filter assets by type, including HTML Emails, Template-Based Emails, and HTML Blocks.
 * **Search Functionality**: Quickly find specific assets by name using the real-time search bar.
 * **Bulk Download**: Select multiple emails or templates and download them all at once. Single files are downloaded as HTML, while multiple selections are automatically bundled into a ZIP file.
+* **Export Package**: For each selected asset, creates a dedicated folder (`Downloads/<AssetName>/`) containing the HTML with all images and links rewritten as AMPscript `SET` variables (`@imagemN` / `@imagemNUrl` / `@linkN`), plus an `IMG/` subfolder with every image downloaded and numbered in the order it appears — ready to paste back into Content Builder with a clean, organized variable block.
 * **Internationalization**: Fully localized interface available in both English (US) and Portuguese (BR), with easy language switching.
 * **Modern Interface**: A minimalist design inspired by the Salesforce Lightning Design System for a familiar user experience.
 

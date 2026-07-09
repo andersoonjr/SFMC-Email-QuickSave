@@ -435,6 +435,101 @@ async function downloadImage(url) {
   }
 }
 
+function getFileExtension(filename) {
+  const dot = filename.lastIndexOf('.');
+  return dot >= 0 ? filename.slice(dot) : '';
+}
+
+/**
+ * Mapeia cada <img> (em ordem de aparição) ao href do <a> que o envolve, se houver,
+ * e separa os demais <a href> (que não envolvem imagem) como links "soltos".
+ */
+function analyzeLinksAndImages(html) {
+  const imageUrls = extractImageUrls(html);
+  const knownImages = new Set(imageUrls);
+
+  const imageLinkFor = new Map();
+  const plainLinksOrdered = [];
+  const seenPlainLinks = new Set();
+
+  const anchorRegex = /<a\b[^>]*\shref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = anchorRegex.exec(html)) !== null) {
+    const href = match[1];
+    const inner = match[2];
+    const imgMatch = inner.match(/<img[^>]+src=["']([^"']+)["']/i);
+
+    if (imgMatch && knownImages.has(imgMatch[1])) {
+      if (!imageLinkFor.has(imgMatch[1])) {
+        imageLinkFor.set(imgMatch[1], href);
+      }
+    } else if (!seenPlainLinks.has(href)) {
+      seenPlainLinks.add(href);
+      plainLinksOrdered.push(href);
+    }
+  }
+
+  return { imageUrls, imageLinkFor, plainLinks: plainLinksOrdered };
+}
+
+/**
+ * Exporta um asset como "pacote": HTML reescrito com variáveis AMPscript
+ * (@imagemN / @imagemNUrl / @linkN, num bloco SET no topo) + imagens numeradas
+ * na ordem em que aparecem, prontas pra virar uma pasta IMG/ separada.
+ */
+async function processAssetForExport(stack, assetId, options = {}) {
+  const { resolveBlocks = true } = options;
+
+  const asset = await getAssetContent(stack, assetId);
+  let html = asset.views?.html?.content || asset.content || '';
+  html = compileAssetSlots(asset);
+  if (resolveBlocks) {
+    html = await compileAssetContent(stack, html, 5);
+  }
+
+  const { imageUrls, imageLinkFor, plainLinks } = analyzeLinksAndImages(html);
+
+  const setLines = [];
+  const images = [];
+  let finalHtml = html;
+
+  for (let i = 0; i < imageUrls.length; i++) {
+    const url = imageUrls[i];
+    const varName = `imagem${i + 1}`;
+
+    const imageData = await downloadImage(url);
+    if (imageData) {
+      imageData.filename = `${varName}${getFileExtension(imageData.filename)}`;
+      images.push(imageData);
+    }
+
+    setLines.push(`SET @${varName} = "${url}"`);
+    finalHtml = finalHtml.split(url).join(`%%=v(@${varName})=%%`);
+
+    const linkHref = imageLinkFor.get(url);
+    if (linkHref) {
+      const linkVar = `${varName}Url`;
+      setLines.push(`SET @${linkVar} = "${linkHref}"`);
+      finalHtml = finalHtml.split(`href="${linkHref}"`).join(`href="%%=v(@${linkVar})=%%"`);
+    }
+  }
+
+  for (let i = 0; i < plainLinks.length; i++) {
+    const href = plainLinks[i];
+    const varName = `link${i + 1}`;
+    setLines.push(`SET @${varName} = "${href}"`);
+    finalHtml = finalHtml.split(`href="${href}"`).join(`href="%%=v(@${varName})=%%"`);
+  }
+
+  const setBlock = setLines.length > 0 ? `%%[\n  ${setLines.join('\n  ')}\n]%%\n\n` : '';
+
+  return {
+    name: asset.name,
+    html: setBlock + finalHtml,
+    images
+  };
+}
+
 async function processAssetComplete(stack, assetId, options = {}) {
   const { resolveBlocks = true, includeImages = false } = options;
   
@@ -655,6 +750,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           );
           return { success: true, data: completeAsset };
           
+        case 'getAssetForExport':
+          const exportAsset = await processAssetForExport(
+            request.stack,
+            request.assetId,
+            { resolveBlocks: request.resolveBlocks !== false }
+          );
+          return { success: true, data: exportAsset };
+
         case 'getFolders':
           const folders = await getAllFolders(request.stack);
           return { success: true, data: folders };

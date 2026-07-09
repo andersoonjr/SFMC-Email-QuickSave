@@ -9,19 +9,23 @@
       return match[1] + '.';
     }
 
-    match = hostname.match(/([^.]+)\.marketingcloudapps\.com/);
+    // Contas modernas (pós-migração) são servidas em <hash>.marketingcloudapps.com,
+    // um único label sem stack numerado embutido — usamos o hostname inteiro.
+    match = hostname.match(/^([a-z0-9-]+)\.marketingcloudapps\.com$/i);
     if (match) {
-      const parts = match[1].split('.');
-      if (parts.length > 1) {
-        return parts[parts.length - 1] + '.';
-      }
+      return hostname + '.';
     }
 
     try {
       if (window.parent && window.parent.location) {
-        const parentMatch = window.parent.location.hostname.match(/mc\.([^.]+)\.exacttarget\.com/);
+        const parentHostname = window.parent.location.hostname;
+        const parentMatch = parentHostname.match(/mc\.([^.]+)\.exacttarget\.com/);
         if (parentMatch && parentMatch[1] !== 'exacttarget') {
           return parentMatch[1] + '.';
+        }
+        const parentModernMatch = parentHostname.match(/^([a-z0-9-]+)\.marketingcloudapps\.com$/i);
+        if (parentModernMatch) {
+          return parentHostname + '.';
         }
       }
     } catch (e) {

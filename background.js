@@ -9,6 +9,11 @@ function getBaseUrl(stack) {
   if (!stack || stack === 's1.' || stack === 's1' || stack === '') {
     return 'https://mc.exacttarget.com';
   }
+  // Contas modernas (pós-migração) são servidas em <hash>.marketingcloudapps.com,
+  // sem subdomínio de stack numerado — o "stack" aqui já é o hostname completo.
+  if (stack.includes('marketingcloudapps.com')) {
+    return `https://${stack.replace(/\.$/, '')}`;
+  }
   const cleanStack = stack.replace(/\.$/, '');
   return `https://mc.${cleanStack}.exacttarget.com`;
 }

@@ -449,13 +449,17 @@ async function checkSession() {
       return;
     }
     state.stack = detectStackFromUrl(tab.url);
-    if (!state.stack) state.stack = 's13.';
+    if (!state.stack) {
+      showLoginRequired();
+      updateStatus('error', 'sessionLost');
+      return;
+    }
     const response = await sendMessage({
       action: 'checkSession',
       stack: state.stack
     });
     if (response.success && response.hasSession) {
-      updateStatus('success', 'connected', ` (${state.stack.replace('.', '')})`);
+      updateStatus('success', 'connected', ` (${formatStackLabel(state.stack)})`);
       showMainContent();
       if (state.categories.length === 0) await loadCategories();
     } else {
@@ -481,15 +485,23 @@ function refreshStatusText() {
   if (elements.statusText) elements.statusText.textContent = text;
 }
 
+function formatStackLabel(stack) {
+  const clean = stack.replace(/\.$/, '');
+  if (clean.includes('marketingcloudapps.com')) {
+    const hash = clean.split('.')[0];
+    return hash.length > 12 ? hash.slice(0, 12) + '…' : hash;
+  }
+  return clean;
+}
+
 function detectStackFromUrl(url) {
   if (!url) return null;
   let match = url.match(/mc\.([^.]+)\.exacttarget\.com/);
   if (match && match[1] !== 'exacttarget') return match[1] + '.';
-  match = url.match(/([^.]+)\.marketingcloudapps\.com/);
-  if (match) {
-    const parts = match[1].split('.');
-    if (parts.length > 1) return parts[parts.length - 1] + '.';
-  }
+  // Contas modernas (pós-migração) são servidas em <hash>.marketingcloudapps.com,
+  // um único label sem stack numerado embutido — usamos o hostname inteiro.
+  match = url.match(/([a-z0-9-]+\.marketingcloudapps\.com)/i);
+  if (match) return match[1] + '.';
   return null;
 }
 

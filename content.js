@@ -4,9 +4,14 @@
   function detectStack() {
     const hostname = window.location.hostname;
 
-    let match = hostname.match(/mc\.([^.]+)\.exacttarget\.com/);
+    let match = hostname.match(/^mc\.([^.]+)\.exacttarget\.com$/);
     if (match && match[1] !== 'exacttarget') {
       return match[1] + '.';
+    }
+
+    // Contas legadas mais antigas, sem stack numerado no hostname (mc.exacttarget.com puro).
+    if (hostname === 'mc.exacttarget.com') {
+      return 's1.';
     }
 
     // Contas modernas (pós-migração) são servidas em <hash>.marketingcloudapps.com,
@@ -19,9 +24,12 @@
     try {
       if (window.parent && window.parent.location) {
         const parentHostname = window.parent.location.hostname;
-        const parentMatch = parentHostname.match(/mc\.([^.]+)\.exacttarget\.com/);
+        const parentMatch = parentHostname.match(/^mc\.([^.]+)\.exacttarget\.com$/);
         if (parentMatch && parentMatch[1] !== 'exacttarget') {
           return parentMatch[1] + '.';
+        }
+        if (parentHostname === 'mc.exacttarget.com') {
+          return 's1.';
         }
         const parentModernMatch = parentHostname.match(/^([a-z0-9-]+)\.marketingcloudapps\.com$/i);
         if (parentModernMatch) {

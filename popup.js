@@ -503,12 +503,24 @@ function formatStackLabel(stack) {
 
 function detectStackFromUrl(url) {
   if (!url) return null;
-  let match = url.match(/mc\.([^.]+)\.exacttarget\.com/);
+  let hostname;
+  try {
+    hostname = new URL(url).hostname;
+  } catch (e) {
+    return null;
+  }
+
+  let match = hostname.match(/^mc\.([^.]+)\.exacttarget\.com$/);
   if (match && match[1] !== 'exacttarget') return match[1] + '.';
+
+  // Contas legadas mais antigas, sem stack numerado no hostname (mc.exacttarget.com puro).
+  if (hostname === 'mc.exacttarget.com') return 's1.';
+
   // Contas modernas (pós-migração) são servidas em <hash>.marketingcloudapps.com,
   // um único label sem stack numerado embutido — usamos o hostname inteiro.
-  match = url.match(/([a-z0-9-]+\.marketingcloudapps\.com)/i);
-  if (match) return match[1] + '.';
+  match = hostname.match(/^([a-z0-9-]+)\.marketingcloudapps\.com$/i);
+  if (match) return hostname + '.';
+
   return null;
 }
 

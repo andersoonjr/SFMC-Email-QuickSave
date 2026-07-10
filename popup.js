@@ -1037,6 +1037,20 @@ async function exportSelectedAsPackage() {
 }
 
 /**
+ * Confere se o dado de uma imagem baixada é utilizável (ArrayBuffer/Blob/
+ * Uint8Array não-vazio + nome de arquivo) antes de gravar em disco ou no ZIP —
+ * evita que uma imagem que falhou silenciosamente em outro ponto derrube o
+ * pacote inteiro (ex: erro do JSZip "Can't read the data of ...").
+ */
+function isValidImageData(img) {
+  if (!img || !img.filename || !img.data) return false;
+  if (img.data instanceof ArrayBuffer) return img.data.byteLength > 0;
+  if (img.data instanceof Blob) return img.data.size > 0;
+  if (ArrayBuffer.isView(img.data)) return img.data.byteLength > 0;
+  return typeof img.data === 'string' && img.data.length > 0;
+}
+
+/**
  * Agrupa um ou mais pacotes exportados num único ZIP, cada asset em sua
  * própria pasta de topo (mesma estrutura de downloadAssetPackage, só que
  * dentro de um arquivo compactado em vez de pastas soltas em Downloads).
@@ -1054,8 +1068,10 @@ async function downloadPackagesAsZip(packages) {
     if (assetData.images.length > 0) {
       const imgFolder = folder.folder('IMG');
       for (const img of assetData.images) {
-        if (img.data && img.filename) {
+        if (isValidImageData(img)) {
           imgFolder.file(img.filename, img.data);
+        } else {
+          console.warn('Imagem descartada do ZIP (dado inválido):', img?.filename || img);
         }
       }
     }
@@ -1097,7 +1113,10 @@ async function downloadAssetPackage(assetData) {
   });
 
   for (const img of assetData.images) {
-    if (!img.data || !img.filename) continue;
+    if (!isValidImageData(img)) {
+      console.warn('Imagem descartada do pacote (dado inválido):', img?.filename || img);
+      continue;
+    }
     const imgBlob = new Blob([img.data], { type: img.contentType || 'application/octet-stream' });
     const imgUrl = URL.createObjectURL(imgBlob);
     await chrome.downloads.download({

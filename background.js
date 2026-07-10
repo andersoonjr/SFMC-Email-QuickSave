@@ -397,6 +397,20 @@ function extractImageUrls(html) {
 }
 
 async function downloadImage(url) {
+  // URLs "protocol-relative" (//host/img.png) são válidas, só falta o esquema.
+  if (/^\/\//.test(url)) {
+    url = 'https:' + url;
+  }
+
+  // Alguns templates (ex: importados via zip no Content Builder) referenciam
+  // imagens com caminho relativo ("images/logo.png") em vez de URL absoluta.
+  // fetch() não tem como resolver isso de forma confiável, então pulamos
+  // direto em vez de tentar e falhar com um erro de rede genérico.
+  if (!/^https?:\/\//i.test(url)) {
+    console.warn(`Imagem ignorada (URL não é absoluta, não é possível baixar): ${url}`);
+    return null;
+  }
+
   try {
     // Sem credentials: 'include' — imagens de email costumam estar em CDNs de
     // terceiros (Cloudfront, hosts próprios do cliente) que não são o mesmo

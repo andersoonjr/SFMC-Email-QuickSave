@@ -35,12 +35,6 @@ const translations = {
     success: "Sucesso!",
     error: "Erro",
     noContent: "Sem conteúdo selecionado.",
-    developedBy: "Desenvolvido por",
-    buyCoffee: "Me pague um café? Sou apenas um Dev Mineiro",
-    donateTitle: "Escolha como apoiar",
-    donateBR: "Sou do Brasil 🇧🇷 (Pix)",
-    donateInt: "Sou Gringo 🌎 (Ko-fi)",
-    donateClose: "Cancelar",
     sessionExpiredTitle: "Sessão Expirada",
     sessionExpiredDesc: "Você não tem uma sessão ativa no SFMC. Por favor, faça o login.",
     imagesIncluded: "imagens incluídas"
@@ -81,12 +75,6 @@ const translations = {
     success: "Success!",
     error: "Error",
     noContent: "No content selected.",
-    developedBy: "Developed by",
-    buyCoffee: "Buy me a coffee? I'm just a solo Dev",
-    donateTitle: "Choose how to support",
-    donateBR: "I'm from Brazil 🇧🇷 (Pix)",
-    donateInt: "I'm International 🌎 (Ko-fi)",
-    donateClose: "Cancel",
     sessionExpiredTitle: "Session Expired",
     sessionExpiredDesc: "You do not have an active session on SFMC. Please log in.",
     imagesIncluded: "images included"
@@ -204,51 +192,6 @@ function initEventListeners() {
       performSearch(term);
     }
   });
-
-  const authorLink = document.getElementById('author-link');
-  if (authorLink) {
-    authorLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      chrome.tabs.create({ url: 'https://www.linkedin.com/in/anderson-junior-769070283/' });
-    });
-  }
-
-  const coffeeLink = document.getElementById('coffee-link');
-  const donationModal = document.getElementById('donation-modal');
-  const closeDonation = document.getElementById('close-donation');
-  const btnDonateBR = document.getElementById('btn-donate-br');
-  const btnDonateInt = document.getElementById('btn-donate-int');
-
-  if (coffeeLink) {
-    coffeeLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      donationModal.classList.remove('hidden');
-    });
-  }
-  if (closeDonation) {
-    closeDonation.addEventListener('click', () => {
-      donationModal.classList.add('hidden');
-    });
-  }
-  if (donationModal) {
-    donationModal.addEventListener('click', (e) => {
-      if (e.target === donationModal) donationModal.classList.add('hidden');
-    });
-  }
-  if (btnDonateBR) {
-    btnDonateBR.addEventListener('click', () => {
-      const linkBR = 'https://livepix.gg/vaquinha/sfmc-quicksave';
-      chrome.tabs.create({ url: linkBR });
-      donationModal.classList.add('hidden');
-    });
-  }
-  if (btnDonateInt) {
-    btnDonateInt.addEventListener('click', () => {
-      const linkInt = 'https://ko-fi.com/jolucas245';
-      chrome.tabs.create({ url: linkInt });
-      donationModal.classList.add('hidden');
-    });
-  }
 
   document.querySelectorAll('.lang-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {

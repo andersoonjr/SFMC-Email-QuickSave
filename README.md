@@ -19,8 +19,9 @@ The tool offers a clean and modern interface for instantly exporting your assets
 * **Folder Navigation**: Browse your Content Builder folder structure through an intuitive, lazy-loading tree view that mirrors the platform's hierarchy. The tree (and loaded folder contents) is cached locally for 30 minutes, so reopening the popup after it auto-closes (a normal Chrome behavior when clicking outside it) restores instantly instead of reloading from scratch. Use the Reload button to force a fresh fetch.
 * **Smart Filtering**: Easily filter assets by type, including HTML Emails, Template-Based Emails, and HTML Blocks.
 * **Search Functionality**: Quickly find specific assets by name using the real-time search bar.
-* **Bulk Download**: Select multiple emails or templates and download them all at once. Single files are downloaded as HTML, while multiple selections are automatically bundled into a ZIP file.
-* **Export Package**: For each selected asset, creates a dedicated folder containing: the **original** HTML untouched (`<AssetName>.html`), a **processed** HTML with all images and links rewritten as AMPscript `SET` variables (`<AssetName>_processado.html`, using `@imagemN` / `@imagemNUrl` / `@linkN`), and an `IMG/` subfolder with every image downloaded and numbered in the order it appears — ready to paste back into Content Builder with a clean, organized variable block. Toggle **"Export Package as ZIP"** in Options to bundle everything (all selected assets, each in its own folder) into a single `.zip` instead of separate folders straight in `Downloads/`.
+* **Bulk Download**: Select multiple emails or templates and download them all at once with a single "Download Selected" button. Single files with no extra options are downloaded as a plain HTML file; anything more (multiple assets, images, or the processed HTML below) is automatically bundled into a ZIP.
+* **Include Images**: toggle in Options to download every image referenced in the HTML alongside it, numbered in the order they appear.
+* **Include Processed HTML with Variables**: toggle in Options to also generate a second HTML file where every image and link is rewritten as an AMPscript `SET` variable (`@imagemN` / `@imagemNUrl` / `@linkN`) — ready to paste back into Content Builder with a clean, organized variable block. Combine with "Include Images" to get the original HTML, the processed HTML, and an `IMG/` folder, each asset in its own folder inside the ZIP.
 * **Internationalization**: Fully localized interface available in both English (US) and Portuguese (BR), with easy language switching.
 * **Modern Interface**: A minimalist design inspired by the Salesforce Lightning Design System for a familiar user experience.
 
@@ -86,7 +87,7 @@ Apoio direto em Reais (BRL) via Pix. Sem taxas internacionais.
 **This fork maintained by Anderson Junior** ([LinkedIn](https://www.linkedin.com/in/anderson-junior-769070283/) · [GitHub](https://github.com/andersoonjr)), with the following additions on top of the original:
 
 - Fixed stack detection for modern (`marketingcloudapps.com`) and legacy bare (`mc.exacttarget.com`) Marketing Cloud domains — the extension previously only worked reliably on one specific stack
-- **Export Package**: generates a folder (or ZIP) per email with the original HTML, a processed HTML using AMPscript `SET` variables (`@imagemN` / `@imagemNUrl` / `@linkN`), and every image downloaded and numbered
+- **Include Processed HTML with Variables** option: generates a second HTML per email using AMPscript `SET` variables (`@imagemN` / `@imagemNUrl` / `@linkN`) instead of hardcoded image/link URLs
 - Local caching of the folder/asset tree, so reopening the popup after Chrome auto-closes it doesn't require a full reload
 - Broadened image download support (CORS, relative URLs) to handle assets hosted on third-party CDNs
 

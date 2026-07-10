@@ -10,12 +10,10 @@ const translations = {
     optionsTitle: "OPÇÕES",
     optionResolveBlocks: "Resolver Blocks",
     optionIncludeImages: "Incluir Imagens",
-    optionExportZip: "Exportar Pacote como ZIP",
+    optionIncludeProcessed: "Incluir HTML Processado com Variáveis",
     foldersTitle: "Pastas & Conteúdo",
     loading: "Carregando...",
     downloadSelected: "Baixar Selecionados",
-    exportPackage: "Exportar Pacote (IMG + Variáveis)",
-    exportingPackage: "Exportando pacote...",
     sessionErrorTitle: "Sem Sessão",
     sessionErrorDesc: "Faça login no Marketing Cloud para continuar.",
     tryAgain: "Tentar Novamente",
@@ -50,7 +48,7 @@ const translations = {
     optionsTitle: "OPTIONS",
     optionResolveBlocks: "Resolve Blocks",
     optionIncludeImages: "Include Images",
-    optionExportZip: "Export Package as ZIP",
+    optionIncludeProcessed: "Include Processed HTML with Variables",
     foldersTitle: "Folders & Content",
     loading: "Loading...",
     filterAll: "All",
@@ -59,8 +57,6 @@ const translations = {
     filterTemplate: "Template",
     filterBlock: "Block",
     downloadSelected: "Download Selected",
-    exportPackage: "Export Package (IMG + Variables)",
-    exportingPackage: "Exporting package...",
     sessionErrorTitle: "No Session",
     sessionErrorDesc: "Please login to Marketing Cloud to continue.",
     tryAgain: "Try Again",
@@ -103,7 +99,6 @@ const elements = {
   appLayout: null,
   btnDownload: null,
   btnText: null,
-  btnExportPackage: null,
   selectAll: null,
   selectionCount: null,
   overlayLoading: null,
@@ -130,7 +125,6 @@ function initElements() {
   elements.appLayout = document.querySelector('.app-layout');
   elements.btnDownload = document.getElementById('btn-download');
   elements.btnText = document.getElementById('btn-text');
-  elements.btnExportPackage = document.getElementById('btn-export-package');
   elements.selectAll = document.getElementById('select-all');
   elements.selectionCount = document.getElementById('selection-count');
   elements.overlayLoading = document.getElementById('overlay-loading');
@@ -146,7 +140,7 @@ function initElements() {
   elements.options = {
     resolveBlocks: document.getElementById('option-resolve-blocks'),
     includeImages: document.getElementById('option-include-images'),
-    exportZip: document.getElementById('option-export-zip')
+    includeProcessed: document.getElementById('option-include-processed')
   };
 }
 
@@ -183,7 +177,6 @@ function initEventListeners() {
   elements.searchInput.addEventListener('input', handleSearchInput);
   elements.clearSearch.addEventListener('click', clearSearch);
   elements.btnDownload.addEventListener('click', downloadSelected);
-  elements.btnExportPackage.addEventListener('click', exportSelectedAsPackage);
   elements.selectAll.addEventListener('change', toggleSelectAll);
 
   elements.searchType.addEventListener('change', () => {
@@ -765,7 +758,6 @@ function updateSelectionCount() {
   const baseText = getMsg('downloadSelected');
   elements.btnText.textContent = count > 0 ? `${baseText} (${count})` : baseText;
   elements.btnDownload.disabled = count === 0;
-  elements.btnExportPackage.disabled = count === 0;
   elements.selectAll.checked = count > 0;
 }
 
@@ -845,61 +837,85 @@ async function downloadSelected() {
     return;
   }
   if (state.selectedAssets.size === 0) return;
-  
+
   const assetIds = Array.from(state.selectedAssets);
   const total = assetIds.length;
   const resolveBlocks = elements.options.resolveBlocks?.checked ?? true;
   const includeImages = elements.options.includeImages?.checked ?? false;
-  
+  const includeProcessed = elements.options.includeProcessed?.checked ?? false;
+  // Sempre que precisamos de imagens e/ou do HTML processado, usamos o
+  // endpoint completo (getAssetForExport) e organizamos cada asset na sua
+  // própria pasta dentro do ZIP — mesma estrutura testada e funcionando do
+  // antigo "Exportar Pacote", só que agora dentro de um único botão.
+  const needsExtra = includeImages || includeProcessed;
+
   showLoading(getMsg('downloading'));
   updateProgress(0, total);
-  
+
   try {
     const files = [];
     const allImages = [];
-    
+
     for (let i = 0; i < total; i++) {
       let statusText = `${getMsg('processing')} ${i + 1}/${total}`;
-      if (resolveBlocks) {
-        statusText += ` - ${getMsg('resolvingBlocks')}`;
-      }
+      if (resolveBlocks) statusText += ` - ${getMsg('resolvingBlocks')}`;
       updateProgress(i, total, statusText);
-      
+
       const assetId = assetIds[i];
-      
-      const response = await sendMessage({
-        action: 'getAssetComplete',
-        stack: state.stack,
-        assetId: assetId,
-        resolveBlocks: resolveBlocks,
-        includeImages: includeImages
-      });
-      
-      if (response.success && response.data) {
-        const assetData = response.data;
-        
-        if (assetData.html) {
-          files.push({
-            name: sanitizeFileName(assetData.name) + '.html',
-            content: assetData.html
-          });
-        }
-        
-        if (assetData.images && assetData.images.length > 0) {
-          for (const img of assetData.images) {
-            allImages.push(img);
+
+      if (needsExtra) {
+        const response = await sendMessage({
+          action: 'getAssetForExport',
+          stack: state.stack,
+          assetId,
+          resolveBlocks
+        });
+
+        if (response.success && response.data) {
+          const assetData = response.data;
+          const folderName = sanitizeFileName(assetData.name);
+
+          files.push({ name: `${folderName}/${folderName}.html`, content: assetData.originalHtml });
+
+          if (includeProcessed) {
+            files.push({ name: `${folderName}/${folderName}_processado.html`, content: assetData.processedHtml });
           }
+
+          if (includeImages) {
+            for (const img of assetData.images) {
+              if (isValidImageData(img)) {
+                allImages.push({ filename: `${folderName}/IMG/${img.filename}`, data: img.data });
+              } else {
+                console.warn('Imagem descartada (dado inválido):', img?.filename || img);
+              }
+            }
+          }
+        }
+      } else {
+        const response = await sendMessage({
+          action: 'getAssetComplete',
+          stack: state.stack,
+          assetId,
+          resolveBlocks,
+          includeImages: false
+        });
+
+        if (response.success && response.data?.html) {
+          files.push({
+            name: sanitizeFileName(response.data.name) + '.html',
+            content: response.data.html
+          });
         }
       }
     }
-    
+
     if (files.length > 0) {
       if (files.length === 1 && allImages.length === 0) {
         downloadSingleFile(files[0]);
       } else {
         await downloadAsZip(files, allImages);
       }
-      
+
       let successMsg = getMsg('success');
       if (allImages.length > 0) {
         successMsg += ` (${allImages.length} ${getMsg('imagesIncluded')})`;
@@ -915,75 +931,11 @@ async function downloadSelected() {
   }
 }
 
-async function exportSelectedAsPackage() {
-  if (state.selectedAssets.size === 0) return;
-
-  const assetIds = Array.from(state.selectedAssets);
-  const total = assetIds.length;
-  const resolveBlocks = elements.options.resolveBlocks?.checked ?? true;
-  const asZip = elements.options.exportZip?.checked ?? false;
-
-  if (asZip && typeof JSZip === 'undefined') {
-    showMessage(`${getMsg('error')}: jszip.min.js not found`);
-    return;
-  }
-
-  showLoading(getMsg('exportingPackage'));
-  updateProgress(0, total);
-
-  let exportedCount = 0;
-  let totalImages = 0;
-  const packages = [];
-
-  try {
-    for (let i = 0; i < total; i++) {
-      let statusText = `${getMsg('processing')} ${i + 1}/${total}`;
-      if (resolveBlocks) statusText += ` - ${getMsg('resolvingBlocks')}`;
-      updateProgress(i, total, statusText);
-
-      const response = await sendMessage({
-        action: 'getAssetForExport',
-        stack: state.stack,
-        assetId: assetIds[i],
-        resolveBlocks
-      });
-
-      if (response.success && response.data) {
-        if (asZip) {
-          packages.push(response.data);
-        } else {
-          await downloadAssetPackage(response.data);
-        }
-        exportedCount++;
-        totalImages += response.data.images.length;
-      }
-    }
-
-    if (asZip && packages.length > 0) {
-      await downloadPackagesAsZip(packages);
-    }
-
-    if (exportedCount > 0) {
-      let successMsg = getMsg('success');
-      if (totalImages > 0) {
-        successMsg += ` (${totalImages} ${getMsg('imagesIncluded')})`;
-      }
-      showMessage(successMsg);
-    } else {
-      showMessage(getMsg('noContent'));
-    }
-  } catch (error) {
-    showMessage(`${getMsg('error')}: ${error.message}`);
-  } finally {
-    hideLoading();
-  }
-}
-
 /**
  * Confere se o dado de uma imagem baixada é utilizável (ArrayBuffer/Blob/
- * Uint8Array não-vazio + nome de arquivo) antes de gravar em disco ou no ZIP —
- * evita que uma imagem que falhou silenciosamente em outro ponto derrube o
- * pacote inteiro (ex: erro do JSZip "Can't read the data of ...").
+ * Uint8Array não-vazio + nome de arquivo) antes de gravar no ZIP — evita que
+ * uma imagem que falhou silenciosamente em outro ponto derrube o pacote
+ * inteiro (ex: erro do JSZip "Can't read the data of ...").
  */
 function isValidImageData(img) {
   if (!img || !img.filename || !img.data) return false;
@@ -999,83 +951,6 @@ function isValidImageData(img) {
   return false;
 }
 
-/**
- * Agrupa um ou mais pacotes exportados num único ZIP, cada asset em sua
- * própria pasta de topo (mesma estrutura de downloadAssetPackage, só que
- * dentro de um arquivo compactado em vez de pastas soltas em Downloads).
- */
-async function downloadPackagesAsZip(packages) {
-  const zip = new JSZip();
-
-  for (const assetData of packages) {
-    const folderName = sanitizeFileName(assetData.name);
-    const folder = zip.folder(folderName);
-
-    folder.file(`${folderName}.html`, assetData.originalHtml);
-    folder.file(`${folderName}_processado.html`, assetData.processedHtml);
-
-    if (assetData.images.length > 0) {
-      const imgFolder = folder.folder('IMG');
-      for (const img of assetData.images) {
-        if (isValidImageData(img)) {
-          imgFolder.file(img.filename, img.data);
-        } else {
-          console.warn('Imagem descartada do ZIP (dado inválido):', img?.filename || img);
-        }
-      }
-    }
-  }
-
-  const blob = await zip.generateAsync({ type: 'blob' });
-  const url = URL.createObjectURL(blob);
-  const timestamp = new Date().toISOString().slice(0, 10);
-  await chrome.downloads.download({
-    url: url,
-    filename: `sfmc-export-${timestamp}.zip`,
-    conflictAction: 'uniquify'
-  });
-}
-
-/**
- * Baixa um asset exportado como pasta separada em Downloads/<nome>/, contendo:
- * - <nome>.html: o HTML original, sem alterações
- * - <nome>_processado.html: o HTML reescrito com variáveis AMPscript
- * - IMG/: as imagens numeradas na ordem em que aparecem
- */
-async function downloadAssetPackage(assetData) {
-  const folderName = sanitizeFileName(assetData.name);
-
-  const originalBlob = new Blob([assetData.originalHtml], { type: 'text/html' });
-  const originalUrl = URL.createObjectURL(originalBlob);
-  await chrome.downloads.download({
-    url: originalUrl,
-    filename: `${folderName}/${folderName}.html`,
-    conflictAction: 'uniquify'
-  });
-
-  const processedBlob = new Blob([assetData.processedHtml], { type: 'text/html' });
-  const processedUrl = URL.createObjectURL(processedBlob);
-  await chrome.downloads.download({
-    url: processedUrl,
-    filename: `${folderName}/${folderName}_processado.html`,
-    conflictAction: 'uniquify'
-  });
-
-  for (const img of assetData.images) {
-    if (!isValidImageData(img)) {
-      console.warn('Imagem descartada do pacote (dado inválido):', img?.filename || img);
-      continue;
-    }
-    const imgBlob = new Blob([img.data], { type: img.contentType || 'application/octet-stream' });
-    const imgUrl = URL.createObjectURL(imgBlob);
-    await chrome.downloads.download({
-      url: imgUrl,
-      filename: `${folderName}/IMG/${img.filename}`,
-      conflictAction: 'uniquify'
-    });
-  }
-}
-
 async function downloadSingleFile(file) {
   const blob = new Blob([file.content], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
@@ -1085,26 +960,32 @@ async function downloadSingleFile(file) {
   });
 }
 
+/**
+ * Agrupa arquivos (HTML) e imagens num único ZIP. Os nomes já vêm prontos
+ * (com pasta por asset quando aplicável) de quem chama esta função — por
+ * isso não há mais uma pasta "images/" fixa aqui, cada chamador decide a
+ * estrutura.
+ */
 async function downloadAsZip(files, images = []) {
   const zip = new JSZip();
-  
+
   files.forEach(f => zip.file(f.name, f.content));
-  
-  if (images.length > 0) {
-    const imgFolder = zip.folder('images');
-    for (const img of images) {
-      if (img.data && img.filename) {
-        imgFolder.file(img.filename, img.data);
-      }
+
+  for (const img of images) {
+    if (isValidImageData(img)) {
+      zip.file(img.filename, img.data);
+    } else {
+      console.warn('Imagem descartada do ZIP (dado inválido):', img?.filename || img);
     }
   }
-  
+
   const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);
   const timestamp = new Date().toISOString().slice(0, 10);
   await chrome.downloads.download({
     url: url,
-    filename: `sfmc-assets-${timestamp}.zip`
+    filename: `sfmc-assets-${timestamp}.zip`,
+    conflictAction: 'uniquify'
   });
 }
 

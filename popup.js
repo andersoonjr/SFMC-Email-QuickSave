@@ -10,6 +10,7 @@ const translations = {
     optionsTitle: "OPÇÕES",
     optionResolveBlocks: "Resolver Blocks",
     optionIncludeImages: "Incluir Imagens",
+    optionExportZip: "Exportar Pacote como ZIP",
     foldersTitle: "Pastas & Conteúdo",
     loading: "Carregando...",
     downloadSelected: "Baixar Selecionados",
@@ -55,6 +56,7 @@ const translations = {
     optionsTitle: "OPTIONS",
     optionResolveBlocks: "Resolve Blocks",
     optionIncludeImages: "Include Images",
+    optionExportZip: "Export Package as ZIP",
     foldersTitle: "Folders & Content",
     loading: "Loading...",
     filterAll: "All",
@@ -155,7 +157,8 @@ function initElements() {
   };
   elements.options = {
     resolveBlocks: document.getElementById('option-resolve-blocks'),
-    includeImages: document.getElementById('option-include-images')
+    includeImages: document.getElementById('option-include-images'),
+    exportZip: document.getElementById('option-export-zip')
   };
 }
 
@@ -975,12 +978,19 @@ async function exportSelectedAsPackage() {
   const assetIds = Array.from(state.selectedAssets);
   const total = assetIds.length;
   const resolveBlocks = elements.options.resolveBlocks?.checked ?? true;
+  const asZip = elements.options.exportZip?.checked ?? false;
+
+  if (asZip && typeof JSZip === 'undefined') {
+    showMessage(`${getMsg('error')}: jszip.min.js not found`);
+    return;
+  }
 
   showLoading(getMsg('exportingPackage'));
   updateProgress(0, total);
 
   let exportedCount = 0;
   let totalImages = 0;
+  const packages = [];
 
   try {
     for (let i = 0; i < total; i++) {
@@ -996,10 +1006,18 @@ async function exportSelectedAsPackage() {
       });
 
       if (response.success && response.data) {
-        await downloadAssetPackage(response.data);
+        if (asZip) {
+          packages.push(response.data);
+        } else {
+          await downloadAssetPackage(response.data);
+        }
         exportedCount++;
         totalImages += response.data.images.length;
       }
+    }
+
+    if (asZip && packages.length > 0) {
+      await downloadPackagesAsZip(packages);
     }
 
     if (exportedCount > 0) {
@@ -1016,6 +1034,41 @@ async function exportSelectedAsPackage() {
   } finally {
     hideLoading();
   }
+}
+
+/**
+ * Agrupa um ou mais pacotes exportados num único ZIP, cada asset em sua
+ * própria pasta de topo (mesma estrutura de downloadAssetPackage, só que
+ * dentro de um arquivo compactado em vez de pastas soltas em Downloads).
+ */
+async function downloadPackagesAsZip(packages) {
+  const zip = new JSZip();
+
+  for (const assetData of packages) {
+    const folderName = sanitizeFileName(assetData.name);
+    const folder = zip.folder(folderName);
+
+    folder.file(`${folderName}.html`, assetData.originalHtml);
+    folder.file(`${folderName}_processado.html`, assetData.processedHtml);
+
+    if (assetData.images.length > 0) {
+      const imgFolder = folder.folder('IMG');
+      for (const img of assetData.images) {
+        if (img.data && img.filename) {
+          imgFolder.file(img.filename, img.data);
+        }
+      }
+    }
+  }
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  const timestamp = new Date().toISOString().slice(0, 10);
+  await chrome.downloads.download({
+    url: url,
+    filename: `sfmc-export-${timestamp}.zip`,
+    conflictAction: 'uniquify'
+  });
 }
 
 /**

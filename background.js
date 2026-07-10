@@ -474,11 +474,59 @@ function getFileExtension(filename) {
 }
 
 /**
+ * Extrai srcs de <img> que são expressões AMPscript/personalização (contêm %%)
+ * em vez de URL estática. Esses não podem ser baixados nem virar @imagemN —
+ * são apenas listados no cabeçalho pra ciência do usuário.
+ * A forma inline %%=...=%% pode conter aspas internas (ex: Lookup("DE","Campo",...)),
+ * então o padrão termina em =%% em vez de parar na primeira aspa.
+ */
+function extractDynamicImageSrcs(html) {
+  const results = new Set();
+  let match;
+
+  const ampPattern = /<img[^>]+?src=["'](%%=[\s\S]*?=%%)/gi;
+  while ((match = ampPattern.exec(html)) !== null) {
+    results.add(match[1]);
+  }
+
+  // Personalization strings simples (%%campo%%), sem aspas internas
+  const persPattern = /<img[^>]+?src=["'](%%[^="'][^"']*%%)["']/gi;
+  while ((match = persPattern.exec(html)) !== null) {
+    results.add(match[1]);
+  }
+
+  return Array.from(results);
+}
+
+/**
+ * Encontra referências a Code Snippets que PERMANECEM no HTML — a forma de
+ * instrução AMPscript (ContentBlockByKey("...") dentro de %%[ ... ]%%), que o
+ * resolvedor inline não substitui de propósito. Retorna os pares tipo/valor
+ * pra buscar o código de cada snippet e exportar como arquivo separado.
+ */
+function extractRemainingSnippetRefs(html) {
+  const refs = new Map();
+  let match;
+
+  const keyOrNamePattern = /ContentBlockBy(Key|Name)\s*\(\s*["']([^"']+)["']\s*\)/gi;
+  while ((match = keyOrNamePattern.exec(html)) !== null) {
+    refs.set(`${match[1].toLowerCase()}:${match[2]}`, { type: match[1].toLowerCase(), value: match[2] });
+  }
+
+  const idPattern = /ContentBlockById\s*\(\s*["']?(\d+)["']?\s*\)/gi;
+  while ((match = idPattern.exec(html)) !== null) {
+    refs.set(`id:${match[1]}`, { type: 'id', value: match[1] });
+  }
+
+  return Array.from(refs.values());
+}
+
+/**
  * Exporta um asset como "pacote": HTML reescrito só com o SRC das imagens
- * como variáveis AMPscript (@imagemN, num bloco SET no topo) — links (<a
- * href>, envolvendo imagem ou não) permanecem exatamente como estão no
- * original — + imagens numeradas na ordem em que aparecem, prontas pra
- * virar uma pasta IMG/ separada.
+ * estáticas como variáveis AMPscript (@imagemN, num bloco SET no topo) —
+ * links (<a href>) e imagens dinâmicas (src com AMPscript) permanecem
+ * exatamente como estão no original — + imagens numeradas na ordem em que
+ * aparecem + código dos Code Snippets referenciados, como arquivos à parte.
  */
 async function processAssetForExport(stack, assetId, options = {}) {
   const { resolveBlocks = true } = options;
@@ -490,7 +538,11 @@ async function processAssetForExport(stack, assetId, options = {}) {
     html = await compileAssetContent(stack, html, 5);
   }
 
-  const imageUrls = extractImageUrls(html);
+  // srcs dinâmicos (AMPscript) ficam intactos no HTML — só notificados no topo.
+  // O filtro por %% também descarta fragmentos truncados que a regex de URL
+  // estática captura quando o src dinâmico tem aspas internas.
+  const dynamicImageSrcs = extractDynamicImageSrcs(html);
+  const imageUrls = extractImageUrls(html).filter(url => !url.includes('%%'));
 
   const setLines = [];
   const images = [];
@@ -512,23 +564,43 @@ async function processAssetForExport(stack, assetId, options = {}) {
 
   const setBlock = setLines.length > 0 ? `%%[\n  ${setLines.join('\n  ')}\n]%%\n\n` : '';
 
-  // Emails (não Blocks/Templates) têm Subject e Preheader como views próprias
-  // no Content Builder — inclui no topo do HTML só quando existir algum dos dois.
+  // Code Snippets referenciados por instrução AMPscript (não resolvidos inline):
+  // busca o código de cada um pra exportar como arquivo separado no pacote.
+  const snippetRefs = extractRemainingSnippetRefs(html);
+  const snippets = [];
+  for (const ref of snippetRefs) {
+    try {
+      const content = await resolveContentBlock(stack, ref);
+      snippets.push({ key: ref.value, content: content || `<!-- Snippet "${ref.value}" retornou vazio -->` });
+    } catch (error) {
+      console.error(`Erro ao buscar snippet ${ref.value}:`, error);
+      snippets.push({ key: ref.value, content: `<!-- Erro ao buscar snippet "${ref.value}": ${error.message} -->` });
+    }
+  }
+
+  // Cabeçalho informativo: Subject/Preheader (emails têm como views próprias),
+  // imagens dinâmicas não alteradas e snippets exportados à parte.
   const subject = asset.views?.subjectline?.content || '';
   const preheader = asset.views?.preheader?.content || '';
-  let infoComment = '';
-  if (subject || preheader) {
-    infoComment = '<!--\n' +
-      (subject ? `Subject: ${subject}\n` : '') +
-      (preheader ? `Preheader: ${preheader}\n` : '') +
-      '-->\n\n';
+  const infoLines = [];
+  if (subject) infoLines.push(`Subject: ${subject}`);
+  if (preheader) infoLines.push(`Preheader: ${preheader}`);
+  if (dynamicImageSrcs.length > 0) {
+    infoLines.push('Imagens dinâmicas (AMPscript — mantidas sem alteração no HTML):');
+    dynamicImageSrcs.forEach(src => infoLines.push(`  - ${src}`));
   }
+  if (snippets.length > 0) {
+    infoLines.push('Code Snippets referenciados (código exportado em SNIPPETS/):');
+    snippets.forEach(s => infoLines.push(`  - ${s.key}`));
+  }
+  const infoComment = infoLines.length > 0 ? `<!--\n${infoLines.join('\n')}\n-->\n\n` : '';
 
   return {
     name: asset.name,
     originalHtml: infoComment + html,
     processedHtml: infoComment + setBlock + finalHtml,
-    images
+    images,
+    snippets
   };
 }
 

@@ -884,6 +884,17 @@ async function downloadSelected() {
             files.push({ name: `${folderName}/${folderName}_processado.html`, content: assetData.processedHtml });
           }
 
+          // Code Snippets referenciados via AMPscript (ContentBlockByKey etc.)
+          // saem como arquivos separados, pra dar visibilidade do código por trás.
+          if (assetData.snippets && assetData.snippets.length > 0) {
+            for (const snippet of assetData.snippets) {
+              files.push({
+                name: `${folderName}/SNIPPETS/${sanitizeFileName(snippet.key)}.html`,
+                content: snippet.content
+              });
+            }
+          }
+
           if (includeImages) {
             for (const img of assetData.images) {
               if (isValidImageData(img)) {

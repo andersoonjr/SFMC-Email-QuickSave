@@ -540,6 +540,13 @@ async function processAssetForExport(stack, assetId, options = {}) {
 
   const setBlock = setLines.length > 0 ? `%%[\n  ${setLines.join('\n  ')}\n]%%\n\n` : '';
 
+  console.log('[SFMC QuickSave] processAssetForExport — imagens antes de enviar:', images.map(img => ({
+    filename: img.filename,
+    hasData: !!img.data,
+    dataType: img.data ? img.data.constructor?.name : null,
+    byteLength: img.data?.byteLength
+  })));
+
   return {
     name: asset.name,
     originalHtml: html,

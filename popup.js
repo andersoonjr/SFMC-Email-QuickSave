@@ -889,7 +889,12 @@ async function downloadSelected() {
               if (isValidImageData(img)) {
                 allImages.push({ filename: `${folderName}/IMG/${img.filename}`, data: img.data });
               } else {
-                console.warn('Imagem descartada (dado inválido):', img?.filename || img);
+                console.warn(
+                  'Imagem descartada (dado inválido):', img?.filename,
+                  '| typeof data:', typeof img?.data,
+                  '| data:', img?.data,
+                  '| objeto completo:', img
+                );
               }
             }
           }

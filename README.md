@@ -81,8 +81,13 @@ Apoio direto em Reais (BRL) via Pix. Sem taxas internacionais.
 
 ## Credits
 
-**Developed by João Ávila**
+**Originally developed by [João Ávila](https://linkedin.com/in/jolucas245)** — the base extension, UI and core Content Builder integration are his work. If you find this tool useful, consider supporting the original project above.
 
-If you find this tool useful or have suggestions for improvements, feel free to reach out.
+**This fork maintained by Anderson Junior** ([LinkedIn](https://www.linkedin.com/in/anderson-junior-769070283/) · [GitHub](https://github.com/andersoonjr)), with the following additions on top of the original:
 
-[LinkedIn Profile](https://linkedin.com/in/jolucas245)
+- Fixed stack detection for modern (`marketingcloudapps.com`) and legacy bare (`mc.exacttarget.com`) Marketing Cloud domains — the extension previously only worked reliably on one specific stack
+- **Export Package**: generates a folder (or ZIP) per email with the original HTML, a processed HTML using AMPscript `SET` variables (`@imagemN` / `@imagemNUrl` / `@linkN`), and every image downloaded and numbered
+- Local caching of the folder/asset tree, so reopening the popup after Chrome auto-closes it doesn't require a full reload
+- Broadened image download support (CORS, relative URLs) to handle assets hosted on third-party CDNs
+
+Licensed under the same MIT license as the original — see [LICENSE](LICENSE).

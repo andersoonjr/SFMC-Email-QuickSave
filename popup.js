@@ -209,7 +209,7 @@ function initEventListeners() {
   if (authorLink) {
     authorLink.addEventListener('click', (e) => {
       e.preventDefault();
-      chrome.tabs.create({ url: 'https://linkedin.com/in/jolucas245' });
+      chrome.tabs.create({ url: 'https://www.linkedin.com/in/anderson-junior-769070283/' });
     });
   }
 

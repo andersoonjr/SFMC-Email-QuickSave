@@ -885,14 +885,21 @@ async function downloadSelected() {
           }
 
           // Code Snippets referenciados via AMPscript (ContentBlockByKey etc.)
-          // saem como arquivos separados, pra dar visibilidade do código por trás.
+          // saem num único code_snippet.txt, com um cabeçalho por snippet.
           if (assetData.snippets && assetData.snippets.length > 0) {
-            for (const snippet of assetData.snippets) {
-              files.push({
-                name: `${folderName}/SNIPPETS/${sanitizeFileName(snippet.key)}.html`,
-                content: snippet.content
-              });
-            }
+            const snippetTxt = assetData.snippets
+              .map(s => `===== Snippet: ${s.key} =====\n\n${s.content}`)
+              .join('\n\n\n');
+            files.push({ name: `${folderName}/code_snippet.txt`, content: snippetTxt });
+          }
+
+          // Todos os links do email, em ordem de aparição, num txt à parte —
+          // o HTML não é alterado por causa deles.
+          if (assetData.links && assetData.links.length > 0) {
+            const linksTxt = assetData.links
+              .map((href, idx) => `${idx + 1}. ${href}`)
+              .join('\n');
+            files.push({ name: `${folderName}/Links_cta_email.txt`, content: linksTxt });
           }
 
           if (includeImages) {

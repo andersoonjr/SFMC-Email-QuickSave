@@ -578,6 +578,15 @@ async function processAssetForExport(stack, assetId, options = {}) {
     }
   }
 
+  // Todos os <a href> do email, na ordem em que aparecem (com repetições) —
+  // exportados em Links_cta_email.txt; o HTML não é alterado por causa deles.
+  const links = [];
+  const linkPattern = /<a\b[^>]*\shref=["']([^"']*)["']/gi;
+  let linkMatch;
+  while ((linkMatch = linkPattern.exec(html)) !== null) {
+    links.push(linkMatch[1]);
+  }
+
   // Cabeçalho informativo: Subject/Preheader (emails têm como views próprias),
   // imagens dinâmicas não alteradas e snippets exportados à parte.
   const subject = asset.views?.subjectline?.content || '';
@@ -590,7 +599,7 @@ async function processAssetForExport(stack, assetId, options = {}) {
     dynamicImageSrcs.forEach(src => infoLines.push(`  - ${src}`));
   }
   if (snippets.length > 0) {
-    infoLines.push('Code Snippets referenciados (código exportado em SNIPPETS/):');
+    infoLines.push('Code Snippets referenciados (código exportado em code_snippet.txt):');
     snippets.forEach(s => infoLines.push(`  - ${s.key}`));
   }
   const infoComment = infoLines.length > 0 ? `<!--\n${infoLines.join('\n')}\n-->\n\n` : '';
@@ -600,7 +609,8 @@ async function processAssetForExport(stack, assetId, options = {}) {
     originalHtml: infoComment + html,
     processedHtml: infoComment + setBlock + finalHtml,
     images,
-    snippets
+    snippets,
+    links
   };
 }
 

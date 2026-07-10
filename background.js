@@ -398,8 +398,11 @@ function extractImageUrls(html) {
 
 async function downloadImage(url) {
   try {
+    // Sem credentials: 'include' — imagens de email costumam estar em CDNs de
+    // terceiros (Cloudfront, hosts próprios do cliente) que não são o mesmo
+    // domínio autenticado do MC, e enviar cookies pra eles não é necessário
+    // nem geralmente aceito por esses servidores.
     const response = await fetch(url, {
-      credentials: 'include',
       mode: 'cors'
     });
     

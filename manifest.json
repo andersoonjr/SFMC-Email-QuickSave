@@ -10,11 +10,7 @@
     "downloads"
   ],
   "host_permissions": [
-    "https://*.exacttarget.com/*",
-    "https://*.marketingcloudapps.com/*",
-    "https://*.salesforce.com/*",
-    "https://*.rest.marketingcloudapis.com/*",
-    "https://*/*"
+    "<all_urls>"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; font-src 'self' https://fonts.gstatic.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline';"

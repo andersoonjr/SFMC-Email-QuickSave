@@ -512,10 +512,22 @@ async function processAssetForExport(stack, assetId, options = {}) {
 
   const setBlock = setLines.length > 0 ? `%%[\n  ${setLines.join('\n  ')}\n]%%\n\n` : '';
 
+  // Emails (não Blocks/Templates) têm Subject e Preheader como views próprias
+  // no Content Builder — inclui no topo do HTML só quando existir algum dos dois.
+  const subject = asset.views?.subjectline?.content || '';
+  const preheader = asset.views?.preheader?.content || '';
+  let infoComment = '';
+  if (subject || preheader) {
+    infoComment = '<!--\n' +
+      (subject ? `Subject: ${subject}\n` : '') +
+      (preheader ? `Preheader: ${preheader}\n` : '') +
+      '-->\n\n';
+  }
+
   return {
     name: asset.name,
-    originalHtml: html,
-    processedHtml: setBlock + finalHtml,
+    originalHtml: infoComment + html,
+    processedHtml: infoComment + setBlock + finalHtml,
     images
   };
 }

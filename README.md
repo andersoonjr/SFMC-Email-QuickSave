@@ -21,7 +21,7 @@ The tool offers a clean and modern interface for instantly exporting your assets
 * **Search Functionality**: Quickly find specific assets by name using the real-time search bar.
 * **Bulk Download**: Select multiple emails or templates and download them all at once with a single "Download Selected" button. Single files with no extra options are downloaded as a plain HTML file; anything more (multiple assets, images, or the processed HTML below) is automatically bundled into a ZIP.
 * **Include Images**: toggle in Options to download every image referenced in the HTML alongside it, numbered in the order they appear.
-* **Include Processed HTML with Variables**: toggle in Options to also generate a second HTML file where every image and link is rewritten as an AMPscript `SET` variable (`@imagemN` / `@imagemNUrl` / `@linkN`) — ready to paste back into Content Builder with a clean, organized variable block. Combine with "Include Images" to get the original HTML, the processed HTML, and an `IMG/` folder, each asset in its own folder inside the ZIP.
+* **Include Processed HTML with Variables**: toggle in Options to also generate a second HTML file where every image `src` is rewritten as an AMPscript `SET` variable (`@imagemN`) — links (`<a href>`, whether wrapping an image or standalone) are left untouched. Ready to paste back into Content Builder with a clean, organized image variable block. Combine with "Include Images" to get the original HTML, the processed HTML, and an `IMG/` folder, each asset in its own folder inside the ZIP.
 * **Internationalization**: Fully localized interface available in both English (US) and Portuguese (BR), with easy language switching.
 * **Modern Interface**: A minimalist design inspired by the Salesforce Lightning Design System for a familiar user experience.
 
@@ -87,7 +87,7 @@ Apoio direto em Reais (BRL) via Pix. Sem taxas internacionais.
 **This fork maintained by Anderson Junior** ([LinkedIn](https://www.linkedin.com/in/anderson-junior-769070283/) · [GitHub](https://github.com/andersoonjr)), with the following additions on top of the original:
 
 - Fixed stack detection for modern (`marketingcloudapps.com`) and legacy bare (`mc.exacttarget.com`) Marketing Cloud domains — the extension previously only worked reliably on one specific stack
-- **Include Processed HTML with Variables** option: generates a second HTML per email using AMPscript `SET` variables (`@imagemN` / `@imagemNUrl` / `@linkN`) instead of hardcoded image/link URLs
+- **Include Processed HTML with Variables** option: generates a second HTML per email using AMPscript `SET` variables (`@imagemN`) for image URLs only — links are left as-is
 - Local caching of the folder/asset tree, so reopening the popup after Chrome auto-closes it doesn't require a full reload
 - Broadened image download support (CORS, relative URLs) to handle assets hosted on third-party CDNs
 

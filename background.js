@@ -474,41 +474,11 @@ function getFileExtension(filename) {
 }
 
 /**
- * Mapeia cada <img> (em ordem de aparição) ao href do <a> que o envolve, se houver,
- * e separa os demais <a href> (que não envolvem imagem) como links "soltos".
- */
-function analyzeLinksAndImages(html) {
-  const imageUrls = extractImageUrls(html);
-  const knownImages = new Set(imageUrls);
-
-  const imageLinkFor = new Map();
-  const plainLinksOrdered = [];
-  const seenPlainLinks = new Set();
-
-  const anchorRegex = /<a\b[^>]*\shref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let match;
-  while ((match = anchorRegex.exec(html)) !== null) {
-    const href = match[1];
-    const inner = match[2];
-    const imgMatch = inner.match(/<img[^>]+src=["']([^"']+)["']/i);
-
-    if (imgMatch && knownImages.has(imgMatch[1])) {
-      if (!imageLinkFor.has(imgMatch[1])) {
-        imageLinkFor.set(imgMatch[1], href);
-      }
-    } else if (!seenPlainLinks.has(href)) {
-      seenPlainLinks.add(href);
-      plainLinksOrdered.push(href);
-    }
-  }
-
-  return { imageUrls, imageLinkFor, plainLinks: plainLinksOrdered };
-}
-
-/**
- * Exporta um asset como "pacote": HTML reescrito com variáveis AMPscript
- * (@imagemN / @imagemNUrl / @linkN, num bloco SET no topo) + imagens numeradas
- * na ordem em que aparecem, prontas pra virar uma pasta IMG/ separada.
+ * Exporta um asset como "pacote": HTML reescrito só com o SRC das imagens
+ * como variáveis AMPscript (@imagemN, num bloco SET no topo) — links (<a
+ * href>, envolvendo imagem ou não) permanecem exatamente como estão no
+ * original — + imagens numeradas na ordem em que aparecem, prontas pra
+ * virar uma pasta IMG/ separada.
  */
 async function processAssetForExport(stack, assetId, options = {}) {
   const { resolveBlocks = true } = options;
@@ -520,7 +490,7 @@ async function processAssetForExport(stack, assetId, options = {}) {
     html = await compileAssetContent(stack, html, 5);
   }
 
-  const { imageUrls, imageLinkFor, plainLinks } = analyzeLinksAndImages(html);
+  const imageUrls = extractImageUrls(html);
 
   const setLines = [];
   const images = [];
@@ -538,20 +508,6 @@ async function processAssetForExport(stack, assetId, options = {}) {
 
     setLines.push(`SET @${varName} = "${url}"`);
     finalHtml = finalHtml.split(url).join(`%%=v(@${varName})=%%`);
-
-    const linkHref = imageLinkFor.get(url);
-    if (linkHref) {
-      const linkVar = `${varName}Url`;
-      setLines.push(`SET @${linkVar} = "${linkHref}"`);
-      finalHtml = finalHtml.split(`href="${linkHref}"`).join(`href="%%=v(@${linkVar})=%%"`);
-    }
-  }
-
-  for (let i = 0; i < plainLinks.length; i++) {
-    const href = plainLinks[i];
-    const varName = `link${i + 1}`;
-    setLines.push(`SET @${varName} = "${href}"`);
-    finalHtml = finalHtml.split(`href="${href}"`).join(`href="%%=v(@${varName})=%%"`);
   }
 
   const setBlock = setLines.length > 0 ? `%%[\n  ${setLines.join('\n  ')}\n]%%\n\n` : '';

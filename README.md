@@ -16,7 +16,7 @@ The tool offers a clean and modern interface for instantly exporting your assets
 ## Key Features
 
 * **Session Integration**: Automatically detects your active Salesforce Marketing Cloud session and stack, eliminating the need for manual login or API credential configuration.
-* **Folder Navigation**: Browse your Content Builder folder structure through an intuitive, lazy-loading tree view that mirrors the platform's hierarchy.
+* **Folder Navigation**: Browse your Content Builder folder structure through an intuitive, lazy-loading tree view that mirrors the platform's hierarchy. The tree (and loaded folder contents) is cached locally for 30 minutes, so reopening the popup after it auto-closes (a normal Chrome behavior when clicking outside it) restores instantly instead of reloading from scratch. Use the Reload button to force a fresh fetch.
 * **Smart Filtering**: Easily filter assets by type, including HTML Emails, Template-Based Emails, and HTML Blocks.
 * **Search Functionality**: Quickly find specific assets by name using the real-time search bar.
 * **Bulk Download**: Select multiple emails or templates and download them all at once. Single files are downloaded as HTML, while multiple selections are automatically bundled into a ZIP file.

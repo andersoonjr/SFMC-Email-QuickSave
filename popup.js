@@ -408,6 +408,7 @@ async function fullReload() {
   state.loadedCategories.clear();
   state.selectedAssets.clear();
   updateSelectionCount();
+  clearCache();
   elements.folderTree.innerHTML = `
     <div class="placeholder-state">
       <div class="spinner"></div>
@@ -447,6 +448,43 @@ function initResizer() {
   });
 }
 
+const CATEGORY_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutos
+
+function getCacheKey() {
+  return `sfmc_cache_${state.stack}`;
+}
+
+function saveCacheToStorage() {
+  try {
+    localStorage.setItem(getCacheKey(), JSON.stringify({
+      categories: state.categories,
+      assets: state.assets,
+      timestamp: Date.now()
+    }));
+  } catch (e) {
+    // Cache é só uma otimização de UX — se falhar (ex: localStorage cheio), ignora silenciosamente.
+  }
+}
+
+function loadCacheFromStorage() {
+  try {
+    const raw = localStorage.getItem(getCacheKey());
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (!cached.categories || Date.now() - cached.timestamp > CATEGORY_CACHE_TTL_MS) return null;
+    return cached;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearCache() {
+  try {
+    localStorage.removeItem(getCacheKey());
+  } catch (e) {
+  }
+}
+
 async function checkSession() {
   updateStatus('warning', 'checkingSession');
   try {
@@ -468,7 +506,18 @@ async function checkSession() {
     if (response.success && response.hasSession) {
       updateStatus('success', 'connected', ` (${formatStackLabel(state.stack)})`);
       showMainContent();
-      if (state.categories.length === 0) await loadCategories();
+      if (state.categories.length === 0) {
+        const cached = loadCacheFromStorage();
+        if (cached) {
+          state.categories = cached.categories;
+          state.assets = cached.assets || {};
+          buildCategoryTree();
+          renderFolderTree();
+          fetchAndApplyCategories(); // atualiza em segundo plano, sem travar a UI já exibida
+        } else {
+          await loadCategories();
+        }
+      }
     } else {
       showLoginRequired();
       updateStatus('error', 'sessionLost');
@@ -530,6 +579,15 @@ async function loadCategories() {
       <div class="spinner"></div>
       <p>${getMsg('loading')}</p>
     </div>`;
+  await fetchAndApplyCategories();
+}
+
+/**
+ * Busca as categorias e atualiza o estado/árvore, sem mexer no placeholder de
+ * loading — usado tanto por loadCategories() quanto pela atualização silenciosa
+ * em segundo plano quando já existe um cache local sendo exibido.
+ */
+async function fetchAndApplyCategories() {
   try {
     const response = await sendMessage({
       action: 'getCategories',
@@ -539,6 +597,7 @@ async function loadCategories() {
       state.categories = response.data;
       buildCategoryTree();
       renderFolderTree();
+      saveCacheToStorage();
     } else {
       handleApiError(new Error(response.error), elements.folderTree);
     }
@@ -668,6 +727,7 @@ async function loadAssetsForCategory(categoryId) {
       state.assets[categoryId] = assets;
       state.loadedCategories.add(categoryId);
       renderAssets(assetsContainer, assets);
+      saveCacheToStorage();
     } else {
       handleApiError(new Error(response.error), assetsContainer);
     }

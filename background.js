@@ -396,6 +396,22 @@ function extractImageUrls(html) {
   return Array.from(urls);
 }
 
+/**
+ * chrome.runtime.sendMessage serializa a resposta do background por JSON,
+ * não por structured clone — um ArrayBuffer nesse caminho vira "{}" (sem
+ * bytes) do outro lado, silenciosamente. Convertendo pra string base64 antes
+ * de enviar, o dado sobrevive ao JSON.stringify/parse intacto.
+ */
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000; // evita estourar a pilha de argumentos em imagens grandes
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 async function downloadImage(url) {
   // URLs "protocol-relative" (//host/img.png) são válidas, só falta o esquema.
   if (/^\/\//.test(url)) {
@@ -442,7 +458,7 @@ async function downloadImage(url) {
     
     return {
       filename: filename,
-      data: arrayBuffer,
+      data: arrayBufferToBase64(arrayBuffer),
       contentType: contentType,
       originalUrl: url
     };
@@ -539,13 +555,6 @@ async function processAssetForExport(stack, assetId, options = {}) {
   }
 
   const setBlock = setLines.length > 0 ? `%%[\n  ${setLines.join('\n  ')}\n]%%\n\n` : '';
-
-  console.log('[SFMC QuickSave] processAssetForExport — imagens antes de enviar:', images.map(img => ({
-    filename: img.filename,
-    hasData: !!img.data,
-    dataType: img.data ? img.data.constructor?.name : null,
-    byteLength: img.data?.byteLength
-  })));
 
   return {
     name: asset.name,

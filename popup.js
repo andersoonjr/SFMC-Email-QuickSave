@@ -887,7 +887,7 @@ async function downloadSelected() {
           if (includeImages) {
             for (const img of assetData.images) {
               if (isValidImageData(img)) {
-                allImages.push({ filename: `${folderName}/IMG/${img.filename}`, data: img.data });
+                allImages.push({ filename: `${folderName}/IMG/${img.filename}`, data: base64ToUint8Array(img.data) });
               } else {
                 console.warn(
                   'Imagem descartada (dado inválido):', img?.filename,
@@ -943,6 +943,21 @@ async function downloadSelected() {
   } finally {
     hideLoading();
   }
+}
+
+/**
+ * O background manda a imagem como string base64 (ver arrayBufferToBase64 em
+ * background.js — necessário porque chrome.runtime.sendMessage serializa a
+ * resposta por JSON, que zera um ArrayBuffer bruto). Decodifica de volta pra
+ * bytes reais antes de gravar em disco ou no ZIP.
+ */
+function base64ToUint8Array(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 /**

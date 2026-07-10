@@ -1044,10 +1044,16 @@ async function exportSelectedAsPackage() {
  */
 function isValidImageData(img) {
   if (!img || !img.filename || !img.data) return false;
-  if (img.data instanceof ArrayBuffer) return img.data.byteLength > 0;
-  if (img.data instanceof Blob) return img.data.size > 0;
-  if (ArrayBuffer.isView(img.data)) return img.data.byteLength > 0;
-  return typeof img.data === 'string' && img.data.length > 0;
+  const data = img.data;
+  if (typeof data === 'string') return data.length > 0;
+  // Evita "instanceof ArrayBuffer"/"instanceof Blob": o dado chega via
+  // chrome.runtime.sendMessage do background (service worker), que é um
+  // realm JS diferente do popup — o objeto é o mesmo byte a byte, mas
+  // "instanceof" contra o construtor do realm errado sempre dá false.
+  // Duck-typing por byteLength/size funciona independente do realm de origem.
+  if (typeof data.byteLength === 'number') return data.byteLength > 0;
+  if (typeof data.size === 'number') return data.size > 0;
+  return false;
 }
 
 /**

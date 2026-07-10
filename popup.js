@@ -11,6 +11,7 @@ const translations = {
     optionResolveBlocks: "Resolver Blocks",
     optionIncludeImages: "Incluir Imagens",
     optionIncludeProcessed: "Incluir HTML Processado com Variáveis",
+    optionExportZip: "Exportar como ZIP",
     foldersTitle: "Pastas & Conteúdo",
     loading: "Carregando...",
     downloadSelected: "Baixar Selecionados",
@@ -49,6 +50,7 @@ const translations = {
     optionResolveBlocks: "Resolve Blocks",
     optionIncludeImages: "Include Images",
     optionIncludeProcessed: "Include Processed HTML with Variables",
+    optionExportZip: "Export as ZIP",
     foldersTitle: "Folders & Content",
     loading: "Loading...",
     filterAll: "All",
@@ -140,7 +142,8 @@ function initElements() {
   elements.options = {
     resolveBlocks: document.getElementById('option-resolve-blocks'),
     includeImages: document.getElementById('option-include-images'),
-    includeProcessed: document.getElementById('option-include-processed')
+    includeProcessed: document.getElementById('option-include-processed'),
+    exportAsZip: document.getElementById('option-export-zip')
   };
 }
 
@@ -910,15 +913,21 @@ async function downloadSelected() {
     }
 
     if (files.length > 0) {
+      let failures = 0;
       if (files.length === 1 && allImages.length === 0) {
         downloadSingleFile(files[0]);
-      } else {
+      } else if (elements.options.exportAsZip?.checked ?? true) {
         await downloadAsZip(files, allImages);
+      } else {
+        failures = await downloadFilesDirectly(files, allImages);
       }
 
       let successMsg = getMsg('success');
       if (allImages.length > 0) {
         successMsg += ` (${allImages.length} ${getMsg('imagesIncluded')})`;
+      }
+      if (failures > 0) {
+        successMsg += ` — ${failures} falha(s), veja o console`;
       }
       showMessage(successMsg);
     } else {
@@ -987,6 +996,61 @@ async function downloadAsZip(files, images = []) {
     filename: `sfmc-assets-${timestamp}.zip`,
     conflictAction: 'uniquify'
   });
+}
+
+/**
+ * Converte um Blob numa data: URL (bytes embutidos na própria URL), via
+ * FileReader. Usado em vez de URL.createObjectURL() no download direto
+ * (sem ZIP) — blob: URLs dependem do documento que as criou continuar vivo
+ * até o download terminar de ler os dados, e no popup (que pode fechar ou
+ * ter o contexto suspenso a qualquer momento entre chamadas assíncronas)
+ * isso se mostrou não confiável para múltiplos arquivos em sequência.
+ * data: URLs não têm essa dependência — os bytes já estão na URL.
+ */
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('Falha ao ler o blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Baixa cada arquivo/imagem diretamente em Downloads/<pasta>/..., sem ZIP.
+ * Cada download é isolado num try/catch — uma falha pontual não derruba o
+ * restante, e fica registrada no console em vez de silenciosamente sumir.
+ */
+async function downloadFilesDirectly(files, images) {
+  let failures = 0;
+
+  for (const f of files) {
+    try {
+      const blob = new Blob([f.content], { type: 'text/html' });
+      const dataUrl = await blobToDataUrl(blob);
+      await chrome.downloads.download({ url: dataUrl, filename: f.name, conflictAction: 'uniquify' });
+    } catch (error) {
+      failures++;
+      console.error(`Falha ao baixar ${f.name}:`, error);
+    }
+  }
+
+  for (const img of images) {
+    if (!isValidImageData(img)) {
+      console.warn('Imagem descartada (dado inválido):', img?.filename || img);
+      continue;
+    }
+    try {
+      const blob = new Blob([img.data], { type: img.contentType || 'application/octet-stream' });
+      const dataUrl = await blobToDataUrl(blob);
+      await chrome.downloads.download({ url: dataUrl, filename: img.filename, conflictAction: 'uniquify' });
+    } catch (error) {
+      failures++;
+      console.error(`Falha ao baixar imagem ${img.filename}:`, error);
+    }
+  }
+
+  return failures;
 }
 
 function sanitizeFileName(name) {
